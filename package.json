@@ -1,0 +1,94 @@
+{
+    "author": "Benji McKenzie",
+    "contributors": [
+        "Axel Kark (original HA Watch author)"
+    ],
+    "description": "Localized and customizable Home Assistant watchface for Pebble Time 2",
+    "license": "MIT",
+    "private": true,
+    "dependencies": {
+        "@rebble/clay": "1.0.8"
+    },
+    "keywords": [
+        "pebble-app",
+        "watchface",
+        "home-assistant"
+    ],
+    "name": "ha-watch-custom",
+    "scripts": {
+        "test": "node test/validate.js"
+    },
+    "pebble": {
+        "capabilities": [
+            "location",
+            "configurable",
+            "health"
+        ],
+        "displayName": "HA Watch Custom",
+        "enableMultiJS": true,
+        "messageKeys": [
+            "dummy",
+            "value1",
+            "unit1",
+            "value2",
+            "unit2",
+            "latitude",
+            "longitude",
+            "error",
+            "value3",
+            "unit3",
+            "value4",
+            "unit4",
+            "value5",
+            "unit5",
+            "value6",
+            "unit6",
+            "rowmode",
+            "weather",
+            "temperature",
+            "tempunit",
+            "timeformat",
+            "dateformat",
+            "language",
+            "visibility",
+            "backgroundcolor",
+            "timecolor",
+            "infocolor",
+            "accentcolor",
+            "fontstyle"
+        ],
+        "projectType": "moddable",
+        "resources": {
+            "media": [
+                {
+                    "file": "images/Pebble_25x25_Sunset.png",
+                    "name": "SUNSET",
+                    "targetPlatforms": null,
+                    "type": "bitmap"
+                },
+                {
+                    "file": "images/Pebble_25x25_Sunrise.png",
+                    "name": "SUNRISE",
+                    "targetPlatforms": null,
+                    "type": "bitmap"
+                },
+                {
+                    "file": "images/steps.png",
+                    "name": "STEPS",
+                    "targetPlatforms": null,
+                    "type": "bitmap"
+                }
+            ]
+        },
+        "sdkVersion": "3",
+        "targetPlatforms": [
+            "emery",
+            "gabbro"
+        ],
+        "uuid": "9698ca1b-7be6-42c5-88b5-7358678dd4c2",
+        "watchapp": {
+            "watchface": true
+        }
+    },
+    "version": "2.0.3"
+}
