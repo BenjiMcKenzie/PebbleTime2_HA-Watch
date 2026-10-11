@@ -132,8 +132,8 @@ function readSettings() {
         return String(stored[key] === undefined || stored[key] === null ? '' : stored[key]).trim();
     }
 
-    function enabled(key) {
-        return stored[key] === undefined || stored[key] === null ? true : Boolean(stored[key]);
+    function enabled(key, fallback) {
+        return stored[key] === undefined || stored[key] === null ? (fallback !== false) : Boolean(stored[key]);
     }
 
     function color(key, fallback) {
@@ -167,6 +167,7 @@ function readSettings() {
         showExtraHa: enabled('showExtraHa'),
         showActivity: enabled('showActivity'),
         showBattery: enabled('showBattery'),
+        combineBatterySteps: enabled('combineBatterySteps', false),
         haRefreshMinutes: minutes('haRefreshMinutes', DEFAULT_HA_REFRESH_MINUTES),
         weatherRefreshMinutes: minutes('weatherRefreshMinutes', DEFAULT_WEATHER_REFRESH_MINUTES)
     };
@@ -198,6 +199,7 @@ var VIS_WEATHER = 4;
 var VIS_EXTRA_HA = 8;
 var VIS_ACTIVITY = 16;
 var VIS_BATTERY = 32;
+var VIS_COMBINED = 64;
 
 function visibilityCode(settings) {
     return (settings.showDate ? VIS_DATE : 0)
@@ -205,7 +207,8 @@ function visibilityCode(settings) {
          | (settings.showWeather ? VIS_WEATHER : 0)
          | (settings.showExtraHa ? VIS_EXTRA_HA : 0)
          | (settings.showActivity ? VIS_ACTIVITY : 0)
-         | (settings.showBattery ? VIS_BATTERY : 0);
+         | (settings.showBattery ? VIS_BATTERY : 0)
+         | (settings.combineBatterySteps ? VIS_COMBINED : 0);
 }
 
 function colorCode(value, fallback) {

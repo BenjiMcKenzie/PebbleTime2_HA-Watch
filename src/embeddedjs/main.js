@@ -224,6 +224,7 @@ const VIS_WEATHER = 4;
 const VIS_EXTRA_HA = 8;
 const VIS_ACTIVITY = 16;
 const VIS_BATTERY = 32;
+const VIS_COMBINED = 64;   // Akku und Schritte teilen sich eine Zeile
 let visibility = VIS_DATE | VIS_TOP | VIS_WEATHER | VIS_EXTRA_HA | VIS_ACTIVITY | VIS_BATTERY;
 
 const FONT_STYLE_BOLD = 0;
@@ -614,6 +615,10 @@ function drawActivityDefault(y) {
     drawIconWithText(iconSteps,
                      HEALTH_UNAVAILABLE === stepsToday ? "---" : String(stepsToday),
                      columns.left, y);
+    if (batteryCombined()) {
+        drawValueWithUnit(String(batteryPercent), "%", columns.right, y);
+        return;
+    }
     const distance = (HEALTH_UNAVAILABLE === distanceTodayMeters)
                    ? "--.-"
                    : (distanceTodayMeters / 1000).toFixed(1);
@@ -666,6 +671,13 @@ function isVisible(flag) {
     return 0 !== (visibility & flag);
 }
 
+// Akku in der Schrittzeile: nur wenn diese Zeile die Vorgabe (Schritte) zeigt;
+// sonst bleibt die eigene Akkuzeile erhalten.
+function batteryCombined() {
+    return isVisible(VIS_COMBINED) && isVisible(VIS_BATTERY)
+        && 0 === rowConfigured[ROW_BOTTOM] && isVisible(VIS_ACTIVITY);
+}
+
 function configurableRowVisible(row) {
     if (ROW_TOP === row) return isVisible(VIS_TOP);
     if (ROW_MIDDLE === row)
@@ -707,7 +719,7 @@ function drawScreen() {
     const showBottom = configurableRowVisible(ROW_BOTTOM);
     const infoCount = (isVisible(VIS_DATE) ? 1 : 0) + (showTop ? 1 : 0)
                     + (showMiddle ? 1 : 0) + (showBottom ? 1 : 0)
-                    + (isVisible(VIS_BATTERY) ? 1 : 0);
+                    + (isVisible(VIS_BATTERY) && !batteryCombined() ? 1 : 0);
     chooseTimeFont(infoCount, now.getHours(), now.getMinutes());
 
     const rows = [];
@@ -716,7 +728,7 @@ function drawScreen() {
     rows.push({ type: "time", height: fontTime.height });
     if (showMiddle) rows.push({ type: "config", row: ROW_MIDDLE, height: INFO_LINE_HEIGHT });
     if (showBottom) rows.push({ type: "config", row: ROW_BOTTOM, height: INFO_LINE_HEIGHT });
-    if (isVisible(VIS_BATTERY)) rows.push({ type: "battery", height: INFO_LINE_HEIGHT });
+    if (isVisible(VIS_BATTERY) && !batteryCombined()) rows.push({ type: "battery", height: INFO_LINE_HEIGHT });
 
     let contentHeight = 0;
     for (let i = 0; i < rows.length; i += 1) contentHeight += rows[i].height;
