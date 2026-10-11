@@ -40,18 +40,12 @@
       {
         "source": "./assets/Roboto-Regular",
         "size": 20,
-        "blocks": [
-          "Basic Latin",
-          "Latin-1 Supplement"
-        ]
+        "characters": "ampm"
       },
       {
         "source": "./assets/Roboto-Regular",
         "size": 24,
-        "blocks": [
-          "Basic Latin",
-          "Latin-1 Supplement"
-        ]
+        "characters": " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~°äöüÄÖÜßéèêàáâçñµ²³"
       }
     ]
   },
@@ -71,11 +65,17 @@
       },
       "watch_setting_read": {
         "returns": "int32_t",
-        "arguments": ["int32_t", "int32_t"]
+        "arguments": [
+          "int32_t",
+          "int32_t"
+        ]
       },
       "watch_setting_write": {
         "returns": "int32_t",
-        "arguments": ["int32_t", "int32_t"]
+        "arguments": [
+          "int32_t",
+          "int32_t"
+        ]
       }
     }
   }
