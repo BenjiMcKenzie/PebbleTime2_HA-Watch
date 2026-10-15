@@ -72,12 +72,14 @@ var CACHE_DEFAULTS = {
     // Siehe DATE_FORMAT_CODES; 1 ist "Tue, 25 Aug".
     dateformat: 1,
     language: 0,
-    visibility: 63,
+    visibility: 191,
     backgroundcolor: 0xFFFFFF,
     timecolor: 0x000000,
     infocolor: 0x000000,
     accentcolor: 0x787878,
-    fontstyle: 0
+    fontstyle: 0,
+    // -1 heisst: Akkustand des Handys unbekannt (API nicht verfuegbar).
+    phonebattery: -1
 };
 ALL_SLOTS.forEach(function(suffix) {
     CACHE_DEFAULTS['value' + suffix] = '';
@@ -168,6 +170,7 @@ function readSettings() {
         showActivity: enabled('showActivity'),
         showBattery: enabled('showBattery'),
         combineBatterySteps: enabled('combineBatterySteps', false),
+        showPhoneBattery: enabled('showPhoneBattery', true),
         haRefreshMinutes: minutes('haRefreshMinutes', DEFAULT_HA_REFRESH_MINUTES),
         weatherRefreshMinutes: minutes('weatherRefreshMinutes', DEFAULT_WEATHER_REFRESH_MINUTES)
     };
@@ -200,6 +203,7 @@ var VIS_EXTRA_HA = 8;
 var VIS_ACTIVITY = 16;
 var VIS_BATTERY = 32;
 var VIS_COMBINED = 64;
+var VIS_PHONE_BATTERY = 128;
 
 function visibilityCode(settings) {
     return (settings.showDate ? VIS_DATE : 0)
@@ -208,7 +212,8 @@ function visibilityCode(settings) {
          | (settings.showExtraHa ? VIS_EXTRA_HA : 0)
          | (settings.showActivity ? VIS_ACTIVITY : 0)
          | (settings.showBattery ? VIS_BATTERY : 0)
-         | (settings.combineBatterySteps ? VIS_COMBINED : 0);
+         | (settings.combineBatterySteps ? VIS_COMBINED : 0)
+         | (settings.showPhoneBattery ? VIS_PHONE_BATTERY : 0);
 }
 
 function colorCode(value, fallback) {
@@ -695,8 +700,42 @@ var RETRY_DELAY_MS = 3 * 1000;
 
 // Die Schluessel muessen zu pebble.messageKeys in package.json und zu
 // MESSAGE_KEYS in src/embeddedjs/main.js passen.
+// Akkustand des Handys ueber die Battery Status API, falls die Pebble-App
+// sie dem JavaScript anbietet (Android-WebView). Gibt es sie nicht oder
+// antwortet sie nicht binnen 1,5 s, wird -1 gesendet und die Uhr zeigt nur
+// ihren eigenen Akku.
+function withPhoneBattery(done) {
+    var finished = false;
+    function finish(level) {
+        if (finished) return;
+        finished = true;
+        if (typeof level === 'number' && isFinite(level))
+            cache.phonebattery = Math.max(0, Math.min(100, Math.round(level * 100)));
+        else
+            cache.phonebattery = -1;
+        done();
+    }
+    try {
+        if (typeof navigator !== 'undefined' && typeof navigator.getBattery === 'function') {
+            setTimeout(function() { finish(null); }, 1500);
+            navigator.getBattery().then(function(battery) {
+                finish(battery.level);
+            }, function() { finish(null); });
+            return;
+        }
+    } catch (e) {
+        console.log('battery api failed: ' + e.message);
+    }
+    finish(null);
+}
+
 function publish(retriesLeft) {
+    withPhoneBattery(function() { sendNow(retriesLeft); });
+}
+
+function sendNow(retriesLeft) {
     var dictionary = {
+        phonebattery: cache.phonebattery,
         error:       currentError,
         rowmode:     cache.rowmode,
         weather:     cache.weather,

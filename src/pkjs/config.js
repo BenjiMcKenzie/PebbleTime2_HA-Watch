@@ -52,6 +52,7 @@ var TEXT = {
     weather: 'Weather', weatherSource: 'Weather source', openMeteo: 'Open-Meteo (default)', homeAssistant: 'Home Assistant', weatherEntity: 'Weather entity ID', weatherHelp: 'Home Assistant reads only the configured weather entity\'s current state, temperature and temperature unit. It reuses the connection above and does not need a location for weather.', temperature: 'Temperature unit', weatherInterval: 'Weather refresh interval (minutes)', celsius: 'Celsius (°C)', fahrenheit: 'Fahrenheit (°F)',
     infoLines: 'Information lines', visibilityHelp: 'The weather/first HA line and activity/second HA line share their existing display areas. The relevant content switch is used, so no duplicate row is created.', showDate: 'Date', showTop: 'Top HA line / sunrise and sunset', showWeather: 'Weather (when no first-line HA sensors are configured)', showExtraHa: 'Additional HA sensor lines', showActivity: 'Steps and distance (when no second-line HA sensors are configured)', showBattery: 'Battery level',
     combineBatterySteps: 'Show battery and steps in one line (replaces distance)',
+    showPhoneBattery: 'Phone battery next to the watch battery (if the Pebble app provides it)',
     topLine: 'Top line / sunrise and sunset', middleLine: 'Weather / first HA line', bottomLine: 'Activity / second HA line', lineHelp: 'A line with configured entities shows Home Assistant values. An empty line uses its named default. One entity uses the full width.', leftEntity: 'Left entity ID', rightEntity: 'Right entity ID', leftUnit: 'Left unit', rightUnit: 'Right unit',
     layout: 'Time and layout', font: 'Time font', bold: 'Roboto Bold (original)', regular: 'Roboto Regular', layoutHelp: 'The time remains visible. It is centered and grows automatically as information is hidden.',
     colors: 'Colors and fonts', background: 'Background', timeColor: 'Time', infoColor: 'Additional information', accentColor: 'Units and hints', colorHelp: 'Colors are limited to the 64-color Pebble Time 2 palette. The original white, black and gray design remains the default.',
@@ -65,6 +66,7 @@ var TEXT = {
     weather: 'Wetter', weatherSource: 'Wetterquelle', openMeteo: 'Open-Meteo (Standard)', homeAssistant: 'Home Assistant', weatherEntity: 'Weather-Entitäts-ID', weatherHelp: 'Home Assistant liest nur Zustand, aktuelle Temperatur und Temperatureinheit der konfigurierten Weather-Entität. Die obige Verbindung wird wiederverwendet; für das Wetter ist kein Standort nötig.', temperature: 'Temperatureinheit', weatherInterval: 'Wetter-Aktualisierungsintervall (Minuten)', celsius: 'Celsius (°C)', fahrenheit: 'Fahrenheit (°F)',
     infoLines: 'Informationszeilen', visibilityHelp: 'Wetter/erste HA-Zeile und Aktivität/zweite HA-Zeile teilen ihre bisherigen Anzeigebereiche. Es gilt jeweils der passende Inhaltsschalter, sodass keine Zeile doppelt erscheint.', showDate: 'Datum', showTop: 'Oberste HA-Zeile / Sonnenauf- und -untergang', showWeather: 'Wetter (wenn die erste HA-Zeile leer ist)', showExtraHa: 'Weitere HA-Sensorzeilen', showActivity: 'Schritte und Entfernung (wenn die zweite HA-Zeile leer ist)', showBattery: 'Akkustand',
     combineBatterySteps: 'Akku und Schritte in einer Zeile (ersetzt die Entfernung)',
+    showPhoneBattery: 'Handy-Akku neben dem Uhrenakku (wenn die Pebble-App ihn bereitstellt)',
     topLine: 'Oberste Zeile / Sonne', middleLine: 'Wetter / erste HA-Zeile', bottomLine: 'Aktivität / zweite HA-Zeile', lineHelp: 'Eine Zeile mit Entitäten zeigt Home-Assistant-Werte. Eine leere Zeile nutzt die genannte Vorgabe. Eine einzelne Entität erhält die volle Breite.', leftEntity: 'Linke Entitäts-ID', rightEntity: 'Rechte Entitäts-ID', leftUnit: 'Linke Einheit', rightUnit: 'Rechte Einheit',
     layout: 'Uhrzeit und Layout', font: 'Schrift der Uhrzeit', bold: 'Roboto Fett (Original)', regular: 'Roboto Regular', layoutHelp: 'Die Uhrzeit bleibt immer sichtbar. Sie wird automatisch zentriert und wächst, wenn Informationen ausgeblendet werden.',
     colors: 'Farben und Schriftarten', background: 'Hintergrund', timeColor: 'Uhrzeit', infoColor: 'Zusatzinformationen', accentColor: 'Einheiten und Hinweise', colorHelp: 'Die Farben sind auf die 64-Farben-Palette der Pebble Time 2 begrenzt. Das ursprüngliche Design in Weiß, Schwarz und Grau bleibt Standard.',
@@ -103,7 +105,8 @@ module.exports = function buildConfig(language) {
       { type: 'toggle', messageKey: 'showExtraHa', label: t.showExtraHa, defaultValue: true },
       { type: 'toggle', messageKey: 'showActivity', label: t.showActivity, defaultValue: true },
       { type: 'toggle', messageKey: 'showBattery', label: t.showBattery, defaultValue: true },
-      { type: 'toggle', messageKey: 'combineBatterySteps', label: t.combineBatterySteps, defaultValue: false }
+      { type: 'toggle', messageKey: 'combineBatterySteps', label: t.combineBatterySteps, defaultValue: false },
+      { type: 'toggle', messageKey: 'showPhoneBattery', label: t.showPhoneBattery, defaultValue: true }
     ]),
     section(t.topLine, [{ type: 'text', defaultValue: t.lineHelp }].concat(sensorItems(t, '3', '4'))),
     section(t.middleLine, sensorItems(t, '1', '2')),

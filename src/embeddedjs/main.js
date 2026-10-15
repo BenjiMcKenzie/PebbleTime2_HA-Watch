@@ -187,6 +187,7 @@ let weatherUnit        = "";
 // etwas anderes als 0 Schritte -- siehe src/c/health.c.
 const HEALTH_UNAVAILABLE = -1;
 let batteryPercent      = 0;
+let phoneBatteryPercent = -1;   // -1: unbekannt
 let stepsToday          = HEALTH_UNAVAILABLE;
 let distanceTodayMeters = HEALTH_UNAVAILABLE;
 
@@ -224,6 +225,7 @@ const VIS_WEATHER = 4;
 const VIS_EXTRA_HA = 8;
 const VIS_ACTIVITY = 16;
 const VIS_BATTERY = 32;
+const VIS_PHONE = 128;     // Handy-Akku neben dem Uhrenakku
 const VIS_COMBINED = 64;   // Akku und Schritte teilen sich eine Zeile
 let visibility = VIS_DATE | VIS_TOP | VIS_WEATHER | VIS_EXTRA_HA | VIS_ACTIVITY | VIS_BATTERY;
 
@@ -625,6 +627,31 @@ function drawActivityDefault(y) {
     drawValueWithUnit(distance, "km", columns.right, y);
 }
 
+// Kleine Symbole fuer die Akkuzeile: Uhr (fast quadratisch) und Handy (hochkant).
+function drawDeviceGlyph(phone, x, y) {
+    const w = phone ? 8 : 12;
+    const h = phone ? 14 : 12;
+    const top = y + ((INFO_LINE_HEIGHT - h) >> 1);
+    render.fillRectangle(colorAccent, x, top, w, h);
+    render.fillRectangle(colorBackground, x + 2, top + 2, w - 4, h - 4);
+}
+
+function drawBatteryPart(phone, percent, centerX, y, maxWidth) {
+    const text  = String(percent);
+    const body  = render.getTextWidth(text, fontInfo) + render.getTextWidth("%", fontInfo) + UNIT_GAP;
+    // Das Symbol entfaellt, wenn die Spalte (unten am runden Rand) zu schmal ist.
+    let glyph = (phone ? 8 : 12) + ICON_GAP;
+    if (glyph + body > maxWidth) glyph = 0;
+    const width = glyph + body;
+    const left  = centerX - (width >> 1);
+    if (glyph) drawDeviceGlyph(phone, left, y);
+    drawValueWithUnit(text, "%", left + glyph + (body >> 1), y);
+}
+
+function phoneBatteryShown() {
+    return isVisible(VIS_PHONE) && phoneBatteryPercent >= 0;
+}
+
 const ROW_DEFAULTS = [drawSunDefault, drawWeatherDefault, drawActivityDefault];
 
 // -------------------------------------------------------------------
@@ -760,7 +787,11 @@ function drawScreen() {
             drawConfigurableRow(item.row, y, item.row === errorRow);
         else if (item.type === "time")
             drawTimeRow(y, now.getHours(), now.getMinutes());
-        else
+        else if (phoneBatteryShown()) {
+            const columns = splitRow(y);
+            drawBatteryPart(false, batteryPercent, columns.left, y, columns.width);
+            drawBatteryPart(true, phoneBatteryPercent, columns.right, y, columns.width);
+        } else
             drawValueWithUnit(String(batteryPercent), "%", CENTER_X, y);
 
         if (index + 1 < rows.length)
@@ -828,7 +859,7 @@ const MESSAGE_KEYS = ["dummy", "value1", "unit1", "value2", "unit2",
                        "rowmode", "weather", "temperature", "tempunit",
                        "timeformat", "dateformat", "language", "visibility",
                        "backgroundcolor", "timecolor", "infocolor", "accentcolor",
-                       "fontstyle"];
+                       "fontstyle", "phonebattery"];
 
 const message = new Message({
     input: 512,
@@ -871,6 +902,9 @@ function handleMessage(received) {
 
         const receivedFontStyle = received.get("fontstyle");
         if (receivedFontStyle !== undefined) fontStyle = receivedFontStyle;
+
+        const receivedPhone = received.get("phonebattery");
+        if (receivedPhone !== undefined) phoneBatteryPercent = receivedPhone;
 
         const background = received.get("backgroundcolor");
         const time = received.get("timecolor");
