@@ -29,6 +29,7 @@ HA Watch Custom shows the time together with the data that matters to you – st
 - Weather from Open-Meteo or from any Home Assistant weather entity
 - Sunrise and sunset, steps and distance (Pebble Health), battery level
 - Show battery and steps in a single line
+- Phone battery next to the watch battery (only if the Pebble app provides it)
 - English or German, automatic language selection
 - 24 h, 12 h or follow the watch; several date formats
 - Choose background, time, info and accent colors from the Pebble palette
@@ -49,6 +50,7 @@ HA Watch Custom zeigt die Uhrzeit zusammen mit den Daten, die dir wichtig sind �
 - Wetter von Open-Meteo oder aus einer beliebigen Home-Assistant-Wetter-Entität
 - Sonnenauf- und -untergang, Schritte und Entfernung (Pebble Health), Akkustand
 - Akku und Schritte wahlweise in einer gemeinsamen Zeile
+- Handy-Akku neben dem Uhrenakku (nur wenn die Pebble-App ihn bereitstellt)
 - Englisch oder Deutsch, automatische Spracherkennung
 - 24 h, 12 h oder Einstellung der Uhr; mehrere Datumsformate
 - Hintergrund-, Zeit-, Info- und Akzentfarbe aus der Pebble-Palette
@@ -64,7 +66,9 @@ Basiert auf HA Watch von Axel Kark (MIT-Lizenz). Eigene UUID – lässt sich neb
 ## Release Notes 2.0.3 (EN / DE)
 - Fixed "Alloy Fatal Error: Memory Full" (only one large time font is kept in memory now) / „Memory Full“-Absturz behoben (nur noch eine große Zeitschrift im Speicher)
 - Watchface no longer crashes back to another face after returning from the menu; drawing errors are caught / Watchface fällt nach dem Menü nicht mehr auf ein anderes Face zurück; Zeichenfehler werden abgefangen
+- Smaller font glyph sets to reduce RAM use / Kleinere Zeichensätze, weniger Speicherbedarf
 - New option: battery and steps in one line / Neue Option: Akku und Schritte in einer Zeile
+- New option: phone battery (if available) / Neue Option: Handy-Akku (falls verfügbar)
 
 ## Schlagwörter
 home assistant, smart home, weather, steps, battery, sunrise, sunset, configurable, german
