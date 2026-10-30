@@ -76,6 +76,16 @@
           "int32_t",
           "int32_t"
         ]
+      },
+      "watch_status_bits": {
+        "returns": "int32_t",
+        "arguments": []
+      },
+      "watch_health_metric": {
+        "returns": "int32_t",
+        "arguments": [
+          "int32_t"
+        ]
       }
     }
   }

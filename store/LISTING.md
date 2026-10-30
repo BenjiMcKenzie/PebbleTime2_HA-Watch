@@ -1,7 +1,7 @@
 # App-Store-Eintrag – HA Watch Custom
 
 Pebble-Appstore (Rebble): Kategorie **Watchface**, Plattformen **Pebble Time 2 (emery)** und **Pebble Round 2 (gabbro)**.
-Version: 2.0.3 · Lizenz: MIT · Basiert auf HA Watch von Axel Kark · Autor der Custom-Version: Benji McKenzie
+Version: 2.1.0 · Lizenz: MIT · Basiert auf HA Watch von Axel Kark · Autor der Custom-Version: Benji McKenzie
 
 ## Dateien zum Hochladen
 | Feld | Datei |
@@ -36,9 +36,10 @@ HA Watch Custom shows the time together with the data that matters to you – st
 - Roboto Bold or Roboto Regular time font; the time grows automatically when you hide lines
 - Independent refresh intervals for Home Assistant and weather (1–120 minutes)
 - Your last layout is stored on the watch, so the face looks right immediately
+- Optional (off by default): report watch battery, charging, quiet time, Bluetooth, firmware and, if you like, steps, distance, heart rate, sleep, active minutes and calories to Home Assistant via MQTT discovery
 
 **Setup**
-Open the watchface settings in the Pebble/Rebble app, enter your Home Assistant URL and a long-lived access token, and add the entity IDs you want to see. The token stays on your phone and is never sent to the watch. Home Assistant must be reachable from your phone.
+Open the watchface settings in the Pebble/Rebble app, enter your Home Assistant URL and a long-lived access token, and add the entity IDs you want to see. For the optional MQTT report, switch it on in the settings; Home Assistant needs the MQTT integration and a broker. The token stays on your phone and is never sent to the watch. Home Assistant must be reachable from your phone.
 
 Based on HA Watch by Axel Kark (MIT license). Uses its own UUID, so it can be installed alongside the original.
 
@@ -57,11 +58,16 @@ HA Watch Custom zeigt die Uhrzeit zusammen mit den Daten, die dir wichtig sind �
 - Zeitschrift Roboto Fett oder Regular; die Uhrzeit wächst automatisch, wenn Zeilen ausgeblendet werden
 - Eigene Aktualisierungsintervalle für Home Assistant und Wetter (1–120 Minuten)
 - Das zuletzt gewählte Layout wird auf der Uhr gespeichert, das Zifferblatt erscheint sofort korrekt
+- Optional (standardmäßig aus): Akku, Laden, Ruhezeit, Bluetooth, Firmware und auf Wunsch Schritte, Distanz, Herzfrequenz, Schlaf, aktive Minuten und Kalorien per MQTT-Discovery an Home Assistant melden
 
 **Einrichtung**
-Öffne die Einstellungen des Watchfaces in der Pebble/Rebble-App, trage die Home-Assistant-URL und ein Langzeit-Zugriffstoken ein und ergänze die gewünschten Entitäts-IDs. Das Token bleibt auf dem Smartphone und wird nie an die Uhr gesendet. Home Assistant muss vom Smartphone aus erreichbar sein.
+Öffne die Einstellungen des Watchfaces in der Pebble/Rebble-App, trage die Home-Assistant-URL und ein Langzeit-Zugriffstoken ein und ergänze die gewünschten Entitäts-IDs. Die optionale MQTT-Meldung schaltest du in den Einstellungen ein; Home Assistant braucht dafür die MQTT-Integration und einen Broker. Das Token bleibt auf dem Smartphone und wird nie an die Uhr gesendet. Home Assistant muss vom Smartphone aus erreichbar sein.
 
 Basiert auf HA Watch von Axel Kark (MIT-Lizenz). Eigene UUID – lässt sich neben dem Original installieren.
+
+## Release Notes 2.1.0 (EN / DE)
+- New, optional and off by default: MQTT status report to Home Assistant (battery, charging, quiet time, Bluetooth, firmware; optionally steps, distance, heart rate, sleep, active minutes, calories) / Neu, optional und standardmäßig aus: MQTT-Statusmeldung an Home Assistant (Akku, Laden, Ruhezeit, Bluetooth, Firmware; optional Schritte, Distanz, Herzfrequenz, Schlaf, aktive Minuten, Kalorien)
+- Without the switch the watchface behaves exactly like 2.0.3 / Ohne den Schalter verhält sich das Watchface wie 2.0.3
 
 ## Release Notes 2.0.3 (EN / DE)
 - Fixed "Alloy Fatal Error: Memory Full" (only one large time font is kept in memory now) / „Memory Full“-Absturz behoben (nur noch eine große Zeitschrift im Speicher)

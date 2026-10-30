@@ -859,11 +859,14 @@ const MESSAGE_KEYS = ["dummy", "value1", "unit1", "value2", "unit2",
                        "rowmode", "weather", "temperature", "tempunit",
                        "timeformat", "dateformat", "language", "visibility",
                        "backgroundcolor", "timecolor", "infocolor", "accentcolor",
-                       "fontstyle", "phonebattery"];
+                       "fontstyle", "phonebattery",
+                       "wstatus", "mqttheartbeat",
+                       "mqtthealth", "wsteps", "wdist", "whr",
+                       "wsleep", "wactive", "wkcal", "wkcala"];
 
 const message = new Message({
     input: 512,
-    output: 128,
+    output: 192,
     keys: MESSAGE_KEYS,
     onReadable() {
         try {
@@ -906,6 +909,19 @@ function handleMessage(received) {
         const receivedPhone = received.get("phonebattery");
         if (receivedPhone !== undefined) phoneBatteryPercent = receivedPhone;
 
+        // Aenderung des MQTT-Heartbeats (z. B. gerade eingeschaltet): sofort melden.
+        const receivedHeartbeat = received.get("mqttheartbeat");
+        let heartbeatChanged = false;
+        if (receivedHeartbeat !== undefined && receivedHeartbeat !== mqttHeartbeatMinutes) {
+            mqttHeartbeatMinutes = receivedHeartbeat;
+            heartbeatChanged = true;
+        }
+        const receivedHealth = received.get("mqtthealth");
+        if (receivedHealth !== undefined && (0 !== receivedHealth) !== mqttHealth) {
+            mqttHealth = 0 !== receivedHealth;
+            heartbeatChanged = true;
+        }
+
         const background = received.get("backgroundcolor");
         const time = received.get("timecolor");
         const info = received.get("infocolor");
@@ -946,7 +962,73 @@ function handleMessage(received) {
         if (receivedLatitude  !== undefined) latitude  = receivedLatitude  / 100000;
         if (receivedLongitude !== undefined) longitude = receivedLongitude / 100000;
 
+        if (heartbeatChanged) reportStatus(true);
         draw();
+    }
+}
+
+// -------------------------------------------------------------------
+// MQTT-Statusmeldung (Akku, Laden, Ruhezeit, Bluetooth)
+// -------------------------------------------------------------------
+// watch_status_bits() steht in src/c/status.c. Gemeldet wird erst, wenn das
+// Telefon ueber "mqttheartbeat" einen Heartbeat in Minuten vorgibt; bis dahin
+// (und solange MQTT in den Einstellungen aus ist) passiert hier nichts. Danach
+// wird nur bei Aenderungen sowie als Heartbeat gesendet. Alles ist gegen
+// Fehler abgeschirmt: die Statusmeldung darf das Zifferblatt nie stoeren.
+let mqttHeartbeatMinutes = 0;   // 0: aus
+let lastStatusBits       = -1;
+let minutesSinceStatus   = 0;
+let statusPending        = false;
+let mqttHealth           = false;   // Gesundheitswerte mitsenden (Schalter am Telefon)
+
+// Gesundheitswerte, die mit jeder Statusmeldung mitgehen. Fehlende Werte
+// (-1) werden weggelassen; das Telefon behaelt dann den letzten bekannten.
+function addHealth(map) {
+    const put = (key, value) => { if (value >= 0) map.set(key, value); };
+    put("wsteps", stepsToday);
+    put("wdist", distanceTodayMeters);
+    if ("function" !== typeof native.watch_health_metric) return;
+    const metric = (which) => native.watch_health_metric(which);
+    put("whr", metric(0));
+    const sleep = metric(1);
+    put("wsleep", sleep < 0 ? sleep : Math.round(sleep / 60));
+    const active = metric(2);
+    put("wactive", active < 0 ? active : Math.round(active / 60));
+    const kcalActive = metric(3);
+    const kcalResting = metric(4);
+    put("wkcala", kcalActive);
+    put("wkcal", (kcalActive < 0 || kcalResting < 0) ? -1 : kcalActive + kcalResting);
+}
+
+function statusChanged(bits) {
+    if (lastStatusBits < 0) return true;
+    if ((bits >> 8) !== (lastStatusBits >> 8)) return true;   // Laden, Ruhezeit, Bluetooth
+    const percent = bits & 255;
+    const lastPercent = lastStatusBits & 255;
+    if (percent === lastPercent) return false;
+    // In 5-%-Schritten, ab 10 % jeder Prozentschritt.
+    return percent <= 10 || Math.abs(percent - lastPercent) >= 5;
+}
+
+function reportStatus(force) {
+    if (mqttHeartbeatMinutes <= 0) return;
+    if (!native || "function" !== typeof native.watch_status_bits) return;
+    try {
+        const bits = native.watch_status_bits();
+        if (!(force || statusPending || minutesSinceStatus >= mqttHeartbeatMinutes
+              || statusChanged(bits)))
+            return;
+        const report = new Map([["wstatus", bits]]);
+        if (mqttHealth) {
+            try { addHealth(report); } catch (e) { trace(`Gesundheitswerte nicht lesbar: ${e}\n`); }
+        }
+        message.write(report);
+        lastStatusBits = bits;
+        minutesSinceStatus = 0;
+        statusPending = false;
+    } catch (e) {
+        statusPending = true;   // naechste Minute noch einmal versuchen
+        trace(`Statusmeldung fehlgeschlagen: ${e}\n`);
     }
 }
 
@@ -955,6 +1037,8 @@ function handleMessage(received) {
 // -------------------------------------------------------------------
 watch.addEventListener("minutechange", () => {
     try { readWatchState(); } catch (e) { trace(`${e}\n`); }
+    minutesSinceStatus += 1;
+    reportStatus(false);
     draw();
 });
 

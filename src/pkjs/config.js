@@ -56,6 +56,7 @@ var TEXT = {
     topLine: 'Top line / sunrise and sunset', middleLine: 'Weather / first HA line', bottomLine: 'Activity / second HA line', lineHelp: 'A line with configured entities shows Home Assistant values. An empty line uses its named default. One entity uses the full width.', leftEntity: 'Left entity ID', rightEntity: 'Right entity ID', leftUnit: 'Left unit', rightUnit: 'Right unit',
     layout: 'Time and layout', font: 'Time font', bold: 'Roboto Bold (original)', regular: 'Roboto Regular', layoutHelp: 'The time remains visible. It is centered and grows automatically as information is hidden.',
     colors: 'Colors and fonts', background: 'Background', timeColor: 'Time', infoColor: 'Additional information', accentColor: 'Units and hints', colorHelp: 'Colors are limited to the 64-color Pebble Time 2 palette. The original white, black and gray design remains the default.',
+    mqtt: 'MQTT status report', mqttHelp: 'Reports watch battery, charging, quiet time, Bluetooth and firmware to Home Assistant through MQTT discovery. It uses the connection above (the HA MQTT integration and a broker must be running). Changes are reported immediately, otherwise at the HA refresh interval (at least every 5 minutes). Off by default.', mqttEnabled: 'Report watch status to Home Assistant', mqttName: 'Device name in Home Assistant', mqttPrefix: 'State topic prefix', minutes: 'minutes', mqttHealth: 'Also report steps, distance, heart rate, sleep, active minutes and calories', mqttHealthHelp: 'These values are sent with every report (changes and heartbeat), not continuously. Turning this off removes the sensors from Home Assistant again.',
     save: 'Save'
   },
   de: {
@@ -70,6 +71,7 @@ var TEXT = {
     topLine: 'Oberste Zeile / Sonne', middleLine: 'Wetter / erste HA-Zeile', bottomLine: 'Aktivität / zweite HA-Zeile', lineHelp: 'Eine Zeile mit Entitäten zeigt Home-Assistant-Werte. Eine leere Zeile nutzt die genannte Vorgabe. Eine einzelne Entität erhält die volle Breite.', leftEntity: 'Linke Entitäts-ID', rightEntity: 'Rechte Entitäts-ID', leftUnit: 'Linke Einheit', rightUnit: 'Rechte Einheit',
     layout: 'Uhrzeit und Layout', font: 'Schrift der Uhrzeit', bold: 'Roboto Fett (Original)', regular: 'Roboto Regular', layoutHelp: 'Die Uhrzeit bleibt immer sichtbar. Sie wird automatisch zentriert und wächst, wenn Informationen ausgeblendet werden.',
     colors: 'Farben und Schriftarten', background: 'Hintergrund', timeColor: 'Uhrzeit', infoColor: 'Zusatzinformationen', accentColor: 'Einheiten und Hinweise', colorHelp: 'Die Farben sind auf die 64-Farben-Palette der Pebble Time 2 begrenzt. Das ursprüngliche Design in Weiß, Schwarz und Grau bleibt Standard.',
+    mqtt: 'MQTT-Statusmeldung', mqttHelp: 'Meldet Akku, Laden, Ruhezeit, Bluetooth und Firmware der Uhr per MQTT-Discovery an Home Assistant. Nutzt die obige Verbindung (MQTT-Integration und Broker müssen laufen). Gemeldet wird bei Änderungen sofort, sonst im Takt des HA-Aktualisierungsintervalls (mindestens alle 5 Minuten). Standardmäßig aus.', mqttEnabled: 'Uhrenstatus an Home Assistant melden', mqttName: 'Gerätename in Home Assistant', mqttPrefix: 'Topic-Präfix für den Zustand', minutes: 'Minuten', mqttHealth: 'Zusätzlich Schritte, Distanz, Herzfrequenz, Schlaf, aktive Minuten und Kalorien melden', mqttHealthHelp: 'Die Werte gehen mit jeder Meldung mit (Änderung und Heartbeat), nicht fortlaufend. Beim Ausschalten verschwinden die Sensoren wieder aus Home Assistant.',
     save: 'Speichern'
   }
 };
@@ -111,6 +113,13 @@ module.exports = function buildConfig(language) {
     section(t.topLine, [{ type: 'text', defaultValue: t.lineHelp }].concat(sensorItems(t, '3', '4'))),
     section(t.middleLine, sensorItems(t, '1', '2')),
     section(t.bottomLine, sensorItems(t, '5', '6')),
+    section(t.mqtt, [
+      { type: 'text', defaultValue: t.mqttHelp },
+      { type: 'toggle', messageKey: 'mqttEnabled', label: t.mqttEnabled, defaultValue: false },
+      { type: 'toggle', messageKey: 'mqttHealth', label: t.mqttHealth, description: t.mqttHealthHelp, defaultValue: false },
+      input('mqttName', t.mqttName, 'Pebble Time 2'),
+      input('mqttPrefix', t.mqttPrefix, 'pebble')
+    ]),
     section(t.layout, [
       { type: 'text', defaultValue: t.layoutHelp },
       { type: 'select', messageKey: 'fontStyle', label: t.font, defaultValue: 'bold', options: [option(t.bold, 'bold'), option(t.regular, 'regular')] }

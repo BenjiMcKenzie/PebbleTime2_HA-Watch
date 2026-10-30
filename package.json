@@ -3,7 +3,7 @@
     "contributors": [
         "Axel Kark (original HA Watch author)"
     ],
-    "description": "Localized and customizable Home Assistant watchface for Pebble Time 2",
+    "description": "Localized and customizable Home Assistant watchface for Pebble Time 2 with optional MQTT status reporting",
     "license": "MIT",
     "private": true,
     "dependencies": {
@@ -56,7 +56,17 @@
             "infocolor",
             "accentcolor",
             "fontstyle",
-            "phonebattery"
+            "phonebattery",
+            "wstatus",
+            "mqttheartbeat",
+            "mqtthealth",
+            "wsteps",
+            "wdist",
+            "whr",
+            "wsleep",
+            "wactive",
+            "wkcal",
+            "wkcala"
         ],
         "projectType": "moddable",
         "resources": {
@@ -91,5 +101,5 @@
             "watchface": true
         }
     },
-    "version": "2.0.3"
+    "version": "2.1.0"
 }

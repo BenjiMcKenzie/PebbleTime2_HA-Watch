@@ -6,6 +6,7 @@
 
 var Clay = require('@rebble/clay');
 var buildClayConfig = require('./config');
+var mqtt = require('./mqtt');
 
 // autoHandleEvents ist aus, weil keiner der Konfigurationswerte auf die Uhr
 // gehoert: URL, Token und Entity-IDs bleiben auf dem Telefon. Clays
@@ -17,6 +18,7 @@ var REQUEST_TIMEOUT_MS  = 15 * 1000;
 var MIN_REFRESH_MINUTES = 1;
 var MAX_REFRESH_MINUTES = 120;
 var DEFAULT_HA_REFRESH_MINUTES = 5;
+var MIN_MQTT_HEARTBEAT_MINUTES = 5;
 var DEFAULT_WEATHER_REFRESH_MINUTES = 15;
 
 // Der Standort wird hoechstens einmal pro Stunde neu bestimmt; fuer Sonnenauf-
@@ -171,9 +173,18 @@ function readSettings() {
         showBattery: enabled('showBattery'),
         combineBatterySteps: enabled('combineBatterySteps', false),
         showPhoneBattery: enabled('showPhoneBattery', true),
+        // MQTT-Meldung der Uhrenwerte; aus, bis der Schalter gesetzt wird.
+        mqttEnabled: enabled('mqttEnabled', false),
+        mqttName: text('mqttName') || 'Pebble Time 2',
+        mqttPrefix: (text('mqttPrefix') || 'pebble').replace(/^\/+|\/+$/g, ''),
+        mqttHealth: enabled('mqttHealth', false),
         haRefreshMinutes: minutes('haRefreshMinutes', DEFAULT_HA_REFRESH_MINUTES),
         weatherRefreshMinutes: minutes('weatherRefreshMinutes', DEFAULT_WEATHER_REFRESH_MINUTES)
     };
+
+    // Die Uhr meldet im Takt des HA-Aktualisierungsintervalls, hoechstens alle
+    // 5 Minuten: haeufiger lohnt den Funk und den Akku nicht.
+    settings.mqttHeartbeat = Math.max(MIN_MQTT_HEARTBEAT_MINUTES, settings.haRefreshMinutes);
 
     ALL_SLOTS.forEach(function(suffix) {
         settings['entity' + suffix] = text('entity' + suffix);
@@ -729,6 +740,14 @@ function withPhoneBattery(done) {
     finish(null);
 }
 
+function mqttHeartbeat() {
+    try { return mqtt.heartbeatMinutes(readSettings()); } catch (e) { return 0; }
+}
+
+function mqttHealthFlag() {
+    try { return mqtt.healthEnabled(readSettings()) ? 1 : 0; } catch (e) { return 0; }
+}
+
 function publish(retriesLeft) {
     withPhoneBattery(function() { sendNow(retriesLeft); });
 }
@@ -749,7 +768,10 @@ function sendNow(retriesLeft) {
         timecolor: cache.timecolor,
         infocolor: cache.infocolor,
         accentcolor: cache.accentcolor,
-        fontstyle: cache.fontstyle
+        fontstyle: cache.fontstyle,
+        // 0 schaltet die Statusmeldung auf der Uhr ab.
+        mqttheartbeat: mqttHeartbeat(),
+        mqtthealth: mqttHealthFlag()
     };
 
     ALL_SLOTS.forEach(function(suffix) {
@@ -805,6 +827,16 @@ Pebble.addEventListener('ready', function() {
     configureRefreshTimers(settings);
 });
 
+// Statusmeldung der Uhr (Akku, Laden, Ruhezeit, Bluetooth) -> MQTT
+Pebble.addEventListener('appmessage', function(event) {
+    try {
+        if (event && event.payload && event.payload.wstatus !== undefined)
+            mqtt.handleStatus(readSettings(), event.payload);
+    } catch (e) {
+        console.log('mqtt failed: ' + e.message);
+    }
+});
+
 Pebble.addEventListener('showConfiguration', function() {
     var settings = readSettings();
     clay = new Clay(buildClayConfig(selectedLanguage(settings)), null, { autoHandleEvents: false });
@@ -841,4 +873,7 @@ Pebble.addEventListener('webviewclosed', function(event) {
     configureRefreshTimers(settings);
     if (needsLocation(settings)) refreshLocation();
     refresh();
+    // Der Heartbeat geht mit dem Refresh an die Uhr; hier nur die Discovery
+    // und den letzten Stand erneut melden, falls Name oder Praefix neu sind.
+    try { mqtt.settingsChanged(settings); } catch (e) { console.log('mqtt failed: ' + e.message); }
 });

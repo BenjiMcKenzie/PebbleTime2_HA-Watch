@@ -9,6 +9,8 @@ extern int32_t health_distance_today();
 extern int32_t clock_is_24h();
 extern int32_t watch_setting_read(int32_t arg0, int32_t arg1);
 extern int32_t watch_setting_write(int32_t arg0, int32_t arg1);
+extern int32_t watch_status_bits();
+extern int32_t watch_health_metric(int32_t arg0);
 
 static void xs_health_steps_today(txMachine* the) {
 	int32_t result = health_steps_today();
@@ -39,6 +41,17 @@ static void xs_watch_setting_write(txMachine* the) {
 	XS->fromInteger(the, mxResult, (txInteger)result);
 }
 
+static void xs_watch_status_bits(txMachine* the) {
+	int32_t result = watch_status_bits();
+	XS->fromInteger(the, mxResult, (txInteger)result);
+}
+
+static void xs_watch_health_metric(txMachine* the) {
+	int32_t arg0 = (int32_t)XS->toInteger(the, mxArgv(0));
+	int32_t result = watch_health_metric(arg0);
+	XS->fromInteger(the, mxResult, (txInteger)result);
+}
+
 void fxBuildFFI(txMachine* the, txAPI* api) {
 	XS = api;
 	XS->newHostFunction(the, xs_health_steps_today, 0, 0, 0);
@@ -60,5 +73,13 @@ void fxBuildFFI(txMachine* the, txAPI* api) {
 	XS->newHostFunction(the, xs_watch_setting_write, 2, 0, 0);
 	XS->push(the, mxThis);
 	XS->defineID(the, XS->id(the, "watch_setting_write"), 0, 0x0E);
+	XS->pop(the);
+	XS->newHostFunction(the, xs_watch_status_bits, 0, 0, 0);
+	XS->push(the, mxThis);
+	XS->defineID(the, XS->id(the, "watch_status_bits"), 0, 0x0E);
+	XS->pop(the);
+	XS->newHostFunction(the, xs_watch_health_metric, 1, 0, 0);
+	XS->push(the, mxThis);
+	XS->defineID(the, XS->id(the, "watch_health_metric"), 0, 0x0E);
 	XS->pop(the);
 }

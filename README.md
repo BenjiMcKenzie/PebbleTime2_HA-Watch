@@ -63,6 +63,17 @@ honored; automatic follows the phone region. HA weather itself requires no
 location request. Location is still requested when Open-Meteo or the local
 sunrise/sunset calculation is visible.
 
+## MQTT Status Report (optional)
+
+Since version 2.1.0 the watchface can report its own status to Home Assistant through MQTT discovery. It is **off by default**; without the switch nothing is sent and the watchface behaves as before.
+
+Entities created in Home Assistant: battery, charging, quiet time, Bluetooth, firmware, last firmware update and last sync. A second switch adds steps, distance, heart rate, sleep duration, active minutes and calories (total and active). Turning it off removes those sensors again.
+
+- The watch reads the values (`src/c/status.c`) and sends them to the phone only on changes (battery in 5 % steps, every percent from 10 %) and at the HA refresh interval (at least every 5 minutes).
+- The phone (`src/pkjs/mqtt.js`) calls the Home Assistant REST service `mqtt.publish` with the URL and token of the connection settings. The token never goes to the watch.
+- Home Assistant needs the MQTT integration with a running broker. The state topic is `<prefix>/<device name>/state`.
+- Errors in this module are caught on the phone and on the watch and cannot break the display.
+
 ## Settings and Updates
 
 All settings are available from the watchface settings page in the Pebble app,
