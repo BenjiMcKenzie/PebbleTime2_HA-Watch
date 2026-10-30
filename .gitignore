@@ -11,3 +11,6 @@ cloudpebble/*.zip
 
 __pycache__/
 *.pyc
+
+# Upload-Paket fuer den Pebble-Store (lokal erzeugt, nicht oeffentlich)
+store-upload.zip
