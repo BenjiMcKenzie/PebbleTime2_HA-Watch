@@ -56,24 +56,49 @@ function healthFromPayload(payload) {
 }
 
 function haPublish(settings, topic, payload, retain, done) {
-  var request = new XMLHttpRequest();
-  request.open('POST', settings.url + '/api/services/mqtt/publish', true);
-  request.setRequestHeader('Authorization', 'Bearer ' + settings.token);
-  request.setRequestHeader('Content-Type', 'application/json');
-  request.timeout = REQUEST_TIMEOUT_MS;
-  request.onload = function() {
-    var ok = request.status >= 200 && request.status < 300;
-    if (!ok) console.log('MQTT publish failed: ' + request.status);
+  var finished = false;
+  var timer = null;
+  var request = null;
+
+  // Meldet genau einmal zurueck, egal was passiert. Haengt eine Anfrage oder
+  // wirft send(), darf inFlight in send() nie dauerhaft gesetzt bleiben, sonst
+  // wird nie wieder etwas gemeldet.
+  function finish(ok) {
+    if (finished) return;
+    finished = true;
+    if (timer !== null) clearTimeout(timer);
     done(ok);
-  };
-  request.onerror = function() { console.log('MQTT publish network error'); done(false); };
-  request.ontimeout = function() { console.log('MQTT publish timeout'); done(false); };
-  request.send(JSON.stringify({
-    topic: topic,
-    payload: typeof payload === 'string' ? payload : JSON.stringify(payload),
-    retain: !!retain,
-    qos: 1
-  }));
+  }
+
+  try {
+    request = new XMLHttpRequest();
+    request.open('POST', settings.url + '/api/services/mqtt/publish', true);
+    request.setRequestHeader('Authorization', 'Bearer ' + settings.token);
+    request.setRequestHeader('Content-Type', 'application/json');
+    request.timeout = REQUEST_TIMEOUT_MS;
+    request.onload = function() {
+      var ok = request.status >= 200 && request.status < 300;
+      if (!ok) console.log('MQTT publish failed: ' + request.status);
+      finish(ok);
+    };
+    request.onerror = function() { console.log('MQTT publish network error'); finish(false); };
+    request.ontimeout = function() { console.log('MQTT publish timeout'); finish(false); };
+    // Eigener Timer: nicht jede PebbleKit-JS-Umgebung loest xhr.timeout aus.
+    timer = setTimeout(function() {
+      console.log('MQTT publish stuck, giving up');
+      try { request.abort(); } catch (e) { /* ignorieren */ }
+      finish(false);
+    }, REQUEST_TIMEOUT_MS + 5000);
+    request.send(JSON.stringify({
+      topic: topic,
+      payload: typeof payload === 'string' ? payload : JSON.stringify(payload),
+      retain: !!retain,
+      qos: 1
+    }));
+  } catch (e) {
+    console.log('MQTT publish failed to start: ' + e.message);
+    finish(false);
+  }
 }
 
 // Nacheinander senden, das schont das Handy-Netz.

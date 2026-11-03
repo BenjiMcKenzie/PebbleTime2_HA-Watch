@@ -11,7 +11,7 @@ var buildConfig = require(path.join(root, 'src/pkjs/config.js'));
 
 assert.strictEqual(packageInfo.name, 'ha-watch-custom');
 assert.strictEqual(packageInfo.author, 'Benji McKenzie');
-assert.strictEqual(packageInfo.version, '2.1.0');
+assert.strictEqual(packageInfo.version, '2.1.1');
 assert.strictEqual(packageInfo.license, 'MIT');
 assert.strictEqual(packageInfo.pebble.displayName, 'HA Watch Custom');
 // Die UUID darf sich nie aendern: Updates ersetzen sonst nicht die installierte App.
@@ -73,6 +73,7 @@ var storage = {
 };
 var requests = [];
 var intervals = [];
+var timers = [];
 var clearedIntervals = [];
 
 function FakeRequest() {
@@ -95,7 +96,8 @@ var context = {
   parseInt: parseInt,
   isNaN: isNaN,
   encodeURIComponent: encodeURIComponent,
-  setTimeout: function() {},
+  setTimeout: function(callback, milliseconds) { timers.push({ callback: callback, milliseconds: milliseconds }); return timers.length; },
+  clearTimeout: function() {},
   setInterval: function(callback, milliseconds) {
     intervals.push({ callback: callback, milliseconds: milliseconds });
     return intervals.length;
@@ -293,5 +295,29 @@ var removal = list.map(function(r) { return JSON.parse(r.body); }).filter(functi
 })[0];
 assert.strictEqual(removal.payload, '', 'sensor config must be cleared');
 assert.strictEqual(stateOf(list).steps, undefined, 'no health values without the switch');
+
+// --- Haengende oder fehlschlagende Anfragen duerfen MQTT nie blockieren ----------
+var stuckSettings = { mqttEnabled: true, mqttHealth: false, url: 'https://ha.example', token: 'secret',
+                      mqttName: 'Pebble Time 2', mqttPrefix: 'pebble', mqttHeartbeat: 30 };
+from = requests.length;
+timers.length = 0;
+mqttModule.handleStatus(stuckSettings, { wstatus: 40 });
+assert.strictEqual(requests.length, from + 1);
+var hanging = requests[from];            // antwortet nie
+var stuckTimer = timers[timers.length - 1];
+assert(stuckTimer && stuckTimer.milliseconds > 15000, 'watchdog timer missing');
+mqttModule.handleStatus(stuckSettings, { wstatus: 41 });
+assert.strictEqual(requests.length, from + 1, 'second report waits while one is in flight');
+stuckTimer.callback();                   // Watchdog loest aus
+list = flush(from + 1);
+assert(list.length >= 1, 'queued report must be sent after the watchdog fired');
+
+var originalSend = FakeRequest.prototype.send;
+FakeRequest.prototype.send = function() { throw new Error('network down'); };
+from = requests.length;
+mqttModule.handleStatus(stuckSettings, { wstatus: 42 });
+FakeRequest.prototype.send = originalSend;
+mqttModule.handleStatus(stuckSettings, { wstatus: 43 });
+assert(requests.length > from + 1, 'a throwing send() must not block later reports');
 
 console.log('HA Watch Custom validation passed');
