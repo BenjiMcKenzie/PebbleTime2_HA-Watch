@@ -11,7 +11,7 @@ var buildConfig = require(path.join(root, 'src/pkjs/config.js'));
 
 assert.strictEqual(packageInfo.name, 'ha-watch-custom');
 assert.strictEqual(packageInfo.author, 'Benji McKenzie');
-assert.strictEqual(packageInfo.version, '2.1.2');
+assert.strictEqual(packageInfo.version, '2.1.3');
 assert.strictEqual(packageInfo.license, 'MIT');
 assert.strictEqual(packageInfo.pebble.displayName, 'HA Watch Custom');
 // Die UUID darf sich nie aendern: Updates ersetzen sonst nicht die installierte App.
@@ -352,5 +352,12 @@ assert(watchSource.indexOf('function resetMessage()') >= 0, 'watch self-heal mis
 assert(watchSource.indexOf('resetMessage();') >= 0 && watchSource.indexOf('statusFailures >= STATUS_FAILURES_BEFORE_RESET') >= 0,
        'watch must rebuild the message layer after repeated send failures');
 assert(watchSource.indexOf('let message = createMessage();') >= 0);
+// Der JS-Stack der Uhr hat nur 384 Eintraege: kein Neuaufbau mitten in der Aufrufkette,
+// und addHealth() ohne Closures.
+assert(watchSource.indexOf('resetRequested = true;') >= 0 && watchSource.indexOf('if (resetRequested) {') >= 0,
+       'message layer must be rebuilt from the minute tick, not from deep inside the call chain');
+var addHealthSource = watchSource.slice(watchSource.indexOf('function addHealth('),
+                                        watchSource.indexOf('\n}\n', watchSource.indexOf('function addHealth(')));
+assert.strictEqual(/=>|function\s*\(/.test(addHealthSource), false, 'addHealth must not create closures');
 
 console.log('HA Watch Custom validation passed');

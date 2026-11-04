@@ -985,26 +985,30 @@ let lastStatusBits       = -1;
 let minutesSinceStatus   = 0;
 let statusPending        = false;
 let statusFailures       = 0;       // aufeinanderfolgende fehlgeschlagene Sendeversuche
+let resetRequested       = false;   // Message-Schicht beim naechsten Minutentakt neu aufbauen
 const STATUS_FAILURES_BEFORE_RESET = 3;
 let mqttHealth           = false;   // Gesundheitswerte mitsenden (Schalter am Telefon)
 
 // Gesundheitswerte, die mit jeder Statusmeldung mitgehen. Fehlende Werte
 // (-1) werden weggelassen; das Telefon behaelt dann den letzten bekannten.
 function addHealth(map) {
-    const put = (key, value) => { if (value >= 0) map.set(key, value); };
-    put("wsteps", stepsToday);
-    put("wdist", distanceTodayMeters);
+    // Bewusst flach und ohne Hilfsfunktionen: der JS-Stack der Uhr ist winzig,
+    // und diese Funktion laeuft tief in der Aufrufkette von handleMessage().
+    if (stepsToday >= 0) map.set("wsteps", stepsToday);
+    if (distanceTodayMeters >= 0) map.set("wdist", distanceTodayMeters);
     if ("function" !== typeof native.watch_health_metric) return;
-    const metric = (which) => native.watch_health_metric(which);
-    put("whr", metric(0));
-    const sleep = metric(1);
-    put("wsleep", sleep < 0 ? sleep : Math.round(sleep / 60));
-    const active = metric(2);
-    put("wactive", active < 0 ? active : Math.round(active / 60));
-    const kcalActive = metric(3);
-    const kcalResting = metric(4);
-    put("wkcala", kcalActive);
-    put("wkcal", (kcalActive < 0 || kcalResting < 0) ? -1 : kcalActive + kcalResting);
+    let value = native.watch_health_metric(0);
+    if (value >= 0) map.set("whr", value);
+    value = native.watch_health_metric(1);
+    if (value >= 0) map.set("wsleep", Math.round(value / 60));
+    value = native.watch_health_metric(2);
+    if (value >= 0) map.set("wactive", Math.round(value / 60));
+    value = native.watch_health_metric(3);
+    if (value >= 0) {
+        map.set("wkcala", value);
+        const resting = native.watch_health_metric(4);
+        if (resting >= 0) map.set("wkcal", value + resting);
+    }
 }
 
 function statusChanged(bits) {
@@ -1038,7 +1042,9 @@ function reportStatus(force) {
         statusPending = true;   // naechste Minute noch einmal versuchen
         trace(`Statusmeldung fehlgeschlagen: ${e}\n`);
         statusFailures += 1;
-        if (statusFailures >= STATUS_FAILURES_BEFORE_RESET) resetMessage();
+        // Nicht hier neu aufbauen: das liefe tief in der Aufrufkette. Der
+        // naechste Minutentakt macht es mit flachem Stack.
+        if (statusFailures >= STATUS_FAILURES_BEFORE_RESET) resetRequested = true;
     }
 }
 
@@ -1066,6 +1072,10 @@ function resetMessage() {
 // Jede Minute neu zeichnen
 // -------------------------------------------------------------------
 watch.addEventListener("minutechange", () => {
+    if (resetRequested) {
+        resetRequested = false;
+        resetMessage();
+    }
     try { readWatchState(); } catch (e) { trace(`${e}\n`); }
     minutesSinceStatus += 1;
     reportStatus(false);

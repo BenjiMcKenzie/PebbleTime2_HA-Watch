@@ -1,7 +1,7 @@
 # App-Store-Eintrag – HA Watch Custom
 
 Pebble-Appstore (Rebble): Kategorie **Watchface**, Plattformen **Pebble Time 2 (emery)** und **Pebble Round 2 (gabbro)**.
-Version: 2.1.2 · Lizenz: MIT · Basiert auf HA Watch von Axel Kark · Autor der Custom-Version: Benji McKenzie
+Version: 2.1.3 · Lizenz: MIT · Basiert auf HA Watch von Axel Kark · Autor der Custom-Version: Benji McKenzie
 
 ## Dateien zum Hochladen
 | Feld | Datei |
@@ -64,6 +64,9 @@ HA Watch Custom zeigt die Uhrzeit zusammen mit den Daten, die dir wichtig sind �
 Öffne die Einstellungen des Watchfaces in der Pebble/Rebble-App, trage die Home-Assistant-URL und ein Langzeit-Zugriffstoken ein und ergänze die gewünschten Entitäts-IDs. Die optionale MQTT-Meldung schaltest du in den Einstellungen ein; Home Assistant braucht dafür die MQTT-Integration und einen Broker. Das Token bleibt auf dem Smartphone und wird nie an die Uhr gesendet. Home Assistant muss vom Smartphone aus erreichbar sein.
 
 Basiert auf HA Watch von Axel Kark (MIT-Lizenz). Eigene UUID – lässt sich neben dem Original installieren.
+
+## Release Notes 2.1.3 (EN / DE)
+- Fixed: "JavaScript stack overflow" crash risk in the optional MQTT report (flatter call chain) / Behoben: Risiko eines „JavaScript stack overflow“-Absturzes bei der optionalen MQTT-Meldung (flachere Aufrufkette)
 
 ## Release Notes 2.1.2 (EN / DE)
 - Fixed: the optional MQTT report could stay silent for hours after a failed send; the watch now rebuilds its message layer, and failed reports are retried / Behoben: Die optionale MQTT-Meldung konnte nach einem fehlgeschlagenen Senden stundenlang schweigen; die Uhr baut ihre Message-Schicht jetzt neu auf, fehlgeschlagene Meldungen werden wiederholt
