@@ -864,20 +864,25 @@ const MESSAGE_KEYS = ["dummy", "value1", "unit1", "value2", "unit2",
                        "mqtthealth", "wsteps", "wdist", "whr",
                        "wsleep", "wactive", "wkcal", "wkcala"];
 
-const message = new Message({
-    input: 512,
-    output: 192,
-    keys: MESSAGE_KEYS,
-    onReadable() {
-        try {
-            handleMessage(message.read());
-        } catch (e) {
-            // Eine fehlerhafte Nachricht darf die Watchface nicht beenden.
-            trace(`Nachricht nicht verarbeitbar: ${e}\n`);
-            draw();
+function createMessage() {
+    return new Message({
+        input: 512,
+        output: 192,
+        keys: MESSAGE_KEYS,
+        onReadable() {
+            try {
+                handleMessage(message.read());
+            } catch (e) {
+                // Eine fehlerhafte Nachricht darf die Watchface nicht beenden.
+                trace(`Nachricht nicht verarbeitbar: ${e}\n`);
+                draw();
+            }
         }
-    }
-});
+    });
+}
+
+// "let": reportStatus() baut die Message-Schicht bei Bedarf neu auf.
+let message = createMessage();
 
 function handleMessage(received) {
     {
@@ -979,6 +984,8 @@ let mqttHeartbeatMinutes = 0;   // 0: aus
 let lastStatusBits       = -1;
 let minutesSinceStatus   = 0;
 let statusPending        = false;
+let statusFailures       = 0;       // aufeinanderfolgende fehlgeschlagene Sendeversuche
+const STATUS_FAILURES_BEFORE_RESET = 3;
 let mqttHealth           = false;   // Gesundheitswerte mitsenden (Schalter am Telefon)
 
 // Gesundheitswerte, die mit jeder Statusmeldung mitgehen. Fehlende Werte
@@ -1026,9 +1033,32 @@ function reportStatus(force) {
         lastStatusBits = bits;
         minutesSinceStatus = 0;
         statusPending = false;
+        statusFailures = 0;
     } catch (e) {
         statusPending = true;   // naechste Minute noch einmal versuchen
         trace(`Statusmeldung fehlgeschlagen: ${e}\n`);
+        statusFailures += 1;
+        if (statusFailures >= STATUS_FAILURES_BEFORE_RESET) resetMessage();
+    }
+}
+
+// pebble/message sperrt das Schreiben nach jedem write() bis zur Bestaetigung.
+// Bleibt die aus (z. B. wenn das Senden sofort scheitert), wirft jedes weitere
+// write() "not writable", und es wird nie wieder gemeldet, obwohl Telefon und
+// Anzeige weiterlaufen. Ein Neuaufbau der Message-Schicht hebt die Sperre auf.
+function resetMessage() {
+    statusFailures = 0;
+    try {
+        trace("Message-Schicht wird neu aufgebaut\n");
+        message.close();
+    } catch (e) {
+        trace(`Message.close fehlgeschlagen: ${e}\n`);
+    }
+    try {
+        message = createMessage();
+    } catch (e) {
+        // Ohne Message-Schicht laeuft die Uhr weiter, nur ohne Telefondaten.
+        trace(`Message-Neuaufbau fehlgeschlagen: ${e}\n`);
     }
 }
 

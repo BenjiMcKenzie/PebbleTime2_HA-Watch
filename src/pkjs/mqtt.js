@@ -16,6 +16,10 @@ var LAST_BITS_KEY = 'pebbleha_lastbits';
 var LAST_HEALTH_KEY = 'pebbleha_lasthealth';
 var REQUEST_TIMEOUT_MS = 15 * 1000;
 
+// Schlaegt eine Meldung fehl, wird nach 1 und nach 5 Minuten noch einmal versucht,
+// solange keine neuere Meldung dazugekommen ist.
+var RETRY_DELAYS_MS = [60 * 1000, 5 * 60 * 1000];
+var reportSeq = 0;
 var inFlight = false;
 var queuedBits = null;
 
@@ -226,8 +230,9 @@ function discoveryItems(settings, info, removeHealth) {
 
 function onOff(flag) { return flag ? 'ON' : 'OFF'; }
 
-function send(settings, bits, health) {
+function send(settings, bits, health, attempt) {
   if (inFlight) { queuedBits = { bits: bits, health: health }; return; }
+  var seq = reportSeq;
 
   var id = slug(settings.mqttName);
   var info = watchInfo();
@@ -266,6 +271,12 @@ function send(settings, bits, health) {
         localStorage.setItem(LAST_HEALTH_KEY, JSON.stringify(health));
       } catch (e) { /* ignorieren */ }
     }
+    var tries = attempt || 0;
+    if (!ok && tries < RETRY_DELAYS_MS.length) {
+      setTimeout(function() {
+        if (seq === reportSeq) send(settings, bits, health, tries + 1);
+      }, RETRY_DELAYS_MS[tries]);
+    }
     if (queuedBits !== null) {
       var next = queuedBits;
       queuedBits = null;
@@ -279,6 +290,7 @@ function handleStatus(settings, payload) {
   if (!heartbeatMinutes(settings)) return;
   var bits = payload && payload.wstatus;
   if (typeof bits !== 'number' || !isFinite(bits)) return;
+  reportSeq += 1;
   send(settings, bits, healthFromPayload(payload));
 }
 
@@ -291,6 +303,7 @@ function settingsChanged(settings) {
   try { last = parseInt(localStorage.getItem(LAST_BITS_KEY), 10); } catch (e) { last = null; }
   var health = null;
   try { health = JSON.parse(localStorage.getItem(LAST_HEALTH_KEY) || 'null'); } catch (e) { health = null; }
+  reportSeq += 1;
   if (typeof last === 'number' && isFinite(last)) send(settings, last, health || healthFromPayload({}));
 }
 

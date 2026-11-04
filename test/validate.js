@@ -11,7 +11,7 @@ var buildConfig = require(path.join(root, 'src/pkjs/config.js'));
 
 assert.strictEqual(packageInfo.name, 'ha-watch-custom');
 assert.strictEqual(packageInfo.author, 'Benji McKenzie');
-assert.strictEqual(packageInfo.version, '2.1.1');
+assert.strictEqual(packageInfo.version, '2.1.2');
 assert.strictEqual(packageInfo.license, 'MIT');
 assert.strictEqual(packageInfo.pebble.displayName, 'HA Watch Custom');
 // Die UUID darf sich nie aendern: Updates ersetzen sonst nicht die installierte App.
@@ -319,5 +319,38 @@ mqttModule.handleStatus(stuckSettings, { wstatus: 42 });
 FakeRequest.prototype.send = originalSend;
 mqttModule.handleStatus(stuckSettings, { wstatus: 43 });
 assert(requests.length > from + 1, 'a throwing send() must not block later reports');
+
+// --- Fehlgeschlagene Meldungen werden wiederholt ---------------------------------
+flush(0);                               // offene Anfrage des vorigen Tests abschliessen
+from = requests.length;
+timers.length = 0;
+mqttModule.handleStatus(stuckSettings, { wstatus: 44 });
+var failing = requests[from];
+failing.__done = true;
+failing.status = 500;
+failing.responseText = 'boom';
+failing.onload();                      // erste Anfrage der Meldung schlaegt fehl
+var retry = timers.filter(function(t) { return t.milliseconds === 60 * 1000; })[0];
+assert(retry, 'a failed report must be retried after one minute');
+var beforeRetry = requests.length;
+retry.callback();
+assert(requests.length > beforeRetry, 'retry must publish again');
+// Eine neuere Meldung macht den alten Wiederholungsversuch hinfaellig.
+flush(from);
+timers.length = 0;
+var failing2 = requests.length;
+mqttModule.handleStatus(stuckSettings, { wstatus: 45 });
+requests[failing2].__done = true; requests[failing2].status = 500; requests[failing2].onload();
+var oldRetry = timers.filter(function(t) { return t.milliseconds === 60 * 1000; })[0];
+mqttModule.handleStatus(stuckSettings, { wstatus: 46 });
+var afterNewer = requests.length;
+oldRetry.callback();
+assert.strictEqual(requests.length, afterNewer, 'a superseded retry must not send stale data');
+
+// --- Uhr: Selbstheilung der Message-Schicht ---------------------------------------
+assert(watchSource.indexOf('function resetMessage()') >= 0, 'watch self-heal missing');
+assert(watchSource.indexOf('resetMessage();') >= 0 && watchSource.indexOf('statusFailures >= STATUS_FAILURES_BEFORE_RESET') >= 0,
+       'watch must rebuild the message layer after repeated send failures');
+assert(watchSource.indexOf('let message = createMessage();') >= 0);
 
 console.log('HA Watch Custom validation passed');
