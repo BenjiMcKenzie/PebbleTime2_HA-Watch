@@ -864,25 +864,26 @@ const MESSAGE_KEYS = ["dummy", "value1", "unit1", "value2", "unit2",
                        "mqtthealth", "wsteps", "wdist", "whr",
                        "wsleep", "wactive", "wkcal", "wkcala"];
 
-function createMessage() {
-    return new Message({
-        input: 512,
-        output: 192,
-        keys: MESSAGE_KEYS,
-        onReadable() {
-            try {
-                handleMessage(message.read());
-            } catch (e) {
-                // Eine fehlerhafte Nachricht darf die Watchface nicht beenden.
-                trace(`Nachricht nicht verarbeitbar: ${e}\n`);
-                draw();
-            }
+// Wichtig: "new Message" steht bewusst direkt auf oberster Ebene und nicht in einer
+// Hilfsfunktion. Beim Start ist der JS-Stack (384 Eintraege) schon fast voll;
+// eine zusaetzliche Funktionsebene hier fuehrt zu "JavaScript stack overflow".
+const messageOptions = {
+    input: 512,
+    output: 192,
+    keys: MESSAGE_KEYS,
+    onReadable() {
+        try {
+            handleMessage(message.read());
+        } catch (e) {
+            // Eine fehlerhafte Nachricht darf die Watchface nicht beenden.
+            trace(`Nachricht nicht verarbeitbar: ${e}\n`);
+            draw();
         }
-    });
-}
+    }
+};
 
-// "let": reportStatus() baut die Message-Schicht bei Bedarf neu auf.
-let message = createMessage();
+// "let": resetMessage() baut die Message-Schicht bei Bedarf neu auf.
+let message = new Message(messageOptions);
 
 function handleMessage(received) {
     {
@@ -914,18 +915,6 @@ function handleMessage(received) {
         const receivedPhone = received.get("phonebattery");
         if (receivedPhone !== undefined) phoneBatteryPercent = receivedPhone;
 
-        // Aenderung des MQTT-Heartbeats (z. B. gerade eingeschaltet): sofort melden.
-        const receivedHeartbeat = received.get("mqttheartbeat");
-        let heartbeatChanged = false;
-        if (receivedHeartbeat !== undefined && receivedHeartbeat !== mqttHeartbeatMinutes) {
-            mqttHeartbeatMinutes = receivedHeartbeat;
-            heartbeatChanged = true;
-        }
-        const receivedHealth = received.get("mqtthealth");
-        if (receivedHealth !== undefined && (0 !== receivedHealth) !== mqttHealth) {
-            mqttHealth = 0 !== receivedHealth;
-            heartbeatChanged = true;
-        }
 
         const background = received.get("backgroundcolor");
         const time = received.get("timecolor");
@@ -967,7 +956,9 @@ function handleMessage(received) {
         if (receivedLatitude  !== undefined) latitude  = receivedLatitude  / 100000;
         if (receivedLongitude !== undefined) longitude = receivedLongitude / 100000;
 
-        if (heartbeatChanged) reportStatus(true);
+        // Aenderung des MQTT-Heartbeats oder -Schalters: sofort melden.
+        if (mqttStatus.configure(received.get("mqttheartbeat"), received.get("mqtthealth")))
+            mqttStatus.report(true);
         draw();
     }
 }
@@ -980,105 +971,133 @@ function handleMessage(received) {
 // (und solange MQTT in den Einstellungen aus ist) passiert hier nichts. Danach
 // wird nur bei Aenderungen sowie als Heartbeat gesendet. Alles ist gegen
 // Fehler abgeschirmt: die Statusmeldung darf das Zifferblatt nie stoeren.
-let mqttHeartbeatMinutes = 0;   // 0: aus
-let lastStatusBits       = -1;
-let minutesSinceStatus   = 0;
-let statusPending        = false;
-let statusFailures       = 0;       // aufeinanderfolgende fehlgeschlagene Sendeversuche
-let resetRequested       = false;   // Message-Schicht beim naechsten Minutentakt neu aufbauen
-const STATUS_FAILURES_BEFORE_RESET = 3;
-let mqttHealth           = false;   // Gesundheitswerte mitsenden (Schalter am Telefon)
+//
+// WICHTIG: Alles steckt in dieser einen Einheit. Jede Deklaration auf oberster
+// Ebene dieses Moduls belegt beim Laden einen Platz im JS-Stack der Uhr (nur
+// 384 Eintraege), und der war mit den frueheren Einzel-Deklarationen schon
+// ausgereizt: eine einzige weitere Funktion fuehrte beim Start zu "JavaScript
+// stack overflow". Neue MQTT-Teile gehoeren hierher, nicht auf oberste Ebene.
+const mqttStatus = (() => {
+    let heartbeatMinutes = 0;    // 0: aus
+    let healthEnabled    = false;   // Gesundheitswerte mitsenden (Schalter am Telefon)
+    let lastBits         = -1;
+    let minutesSince     = 0;
+    let pending          = false;
+    let failures         = 0;       // aufeinanderfolgende fehlgeschlagene Sendeversuche
+    let resetRequested   = false;   // Message-Schicht beim naechsten Minutentakt neu aufbauen
+    const FAILURES_BEFORE_RESET = 3;
 
-// Gesundheitswerte, die mit jeder Statusmeldung mitgehen. Fehlende Werte
-// (-1) werden weggelassen; das Telefon behaelt dann den letzten bekannten.
-function addHealth(map) {
-    // Bewusst flach und ohne Hilfsfunktionen: der JS-Stack der Uhr ist winzig,
-    // und diese Funktion laeuft tief in der Aufrufkette von handleMessage().
-    if (stepsToday >= 0) map.set("wsteps", stepsToday);
-    if (distanceTodayMeters >= 0) map.set("wdist", distanceTodayMeters);
-    if ("function" !== typeof native.watch_health_metric) return;
-    let value = native.watch_health_metric(0);
-    if (value >= 0) map.set("whr", value);
-    value = native.watch_health_metric(1);
-    if (value >= 0) map.set("wsleep", Math.round(value / 60));
-    value = native.watch_health_metric(2);
-    if (value >= 0) map.set("wactive", Math.round(value / 60));
-    value = native.watch_health_metric(3);
-    if (value >= 0) {
-        map.set("wkcala", value);
-        const resting = native.watch_health_metric(4);
-        if (resting >= 0) map.set("wkcal", value + resting);
-    }
-}
-
-function statusChanged(bits) {
-    if (lastStatusBits < 0) return true;
-    if ((bits >> 8) !== (lastStatusBits >> 8)) return true;   // Laden, Ruhezeit, Bluetooth
-    const percent = bits & 255;
-    const lastPercent = lastStatusBits & 255;
-    if (percent === lastPercent) return false;
-    // In 5-%-Schritten, ab 10 % jeder Prozentschritt.
-    return percent <= 10 || Math.abs(percent - lastPercent) >= 5;
-}
-
-function reportStatus(force) {
-    if (mqttHeartbeatMinutes <= 0) return;
-    if (!native || "function" !== typeof native.watch_status_bits) return;
-    try {
-        const bits = native.watch_status_bits();
-        if (!(force || statusPending || minutesSinceStatus >= mqttHeartbeatMinutes
-              || statusChanged(bits)))
-            return;
-        const report = new Map([["wstatus", bits]]);
-        if (mqttHealth) {
-            try { addHealth(report); } catch (e) { trace(`Gesundheitswerte nicht lesbar: ${e}\n`); }
+    // Gesundheitswerte, die mit jeder Meldung mitgehen. Fehlende Werte (-1)
+    // werden weggelassen. Bewusst flach und ohne Hilfsfunktionen.
+    function addHealth(map) {
+        if (stepsToday >= 0) map.set("wsteps", stepsToday);
+        if (distanceTodayMeters >= 0) map.set("wdist", distanceTodayMeters);
+        if ("function" !== typeof native.watch_health_metric) return;
+        let value = native.watch_health_metric(0);
+        if (value >= 0) map.set("whr", value);
+        value = native.watch_health_metric(1);
+        if (value >= 0) map.set("wsleep", Math.round(value / 60));
+        value = native.watch_health_metric(2);
+        if (value >= 0) map.set("wactive", Math.round(value / 60));
+        value = native.watch_health_metric(3);
+        if (value >= 0) {
+            map.set("wkcala", value);
+            const resting = native.watch_health_metric(4);
+            if (resting >= 0) map.set("wkcal", value + resting);
         }
-        message.write(report);
-        lastStatusBits = bits;
-        minutesSinceStatus = 0;
-        statusPending = false;
-        statusFailures = 0;
-    } catch (e) {
-        statusPending = true;   // naechste Minute noch einmal versuchen
-        trace(`Statusmeldung fehlgeschlagen: ${e}\n`);
-        statusFailures += 1;
-        // Nicht hier neu aufbauen: das liefe tief in der Aufrufkette. Der
-        // naechste Minutentakt macht es mit flachem Stack.
-        if (statusFailures >= STATUS_FAILURES_BEFORE_RESET) resetRequested = true;
     }
-}
 
-// pebble/message sperrt das Schreiben nach jedem write() bis zur Bestaetigung.
-// Bleibt die aus (z. B. wenn das Senden sofort scheitert), wirft jedes weitere
-// write() "not writable", und es wird nie wieder gemeldet, obwohl Telefon und
-// Anzeige weiterlaufen. Ein Neuaufbau der Message-Schicht hebt die Sperre auf.
-function resetMessage() {
-    statusFailures = 0;
-    try {
-        trace("Message-Schicht wird neu aufgebaut\n");
-        message.close();
-    } catch (e) {
-        trace(`Message.close fehlgeschlagen: ${e}\n`);
+    function changed(bits) {
+        if (lastBits < 0) return true;
+        if ((bits >> 8) !== (lastBits >> 8)) return true;   // Laden, Ruhezeit, Bluetooth
+        const percent = bits & 255;
+        const lastPercent = lastBits & 255;
+        if (percent === lastPercent) return false;
+        // In 5-%-Schritten, ab 10 % jeder Prozentschritt.
+        return percent <= 10 || Math.abs(percent - lastPercent) >= 5;
     }
-    try {
-        message = createMessage();
-    } catch (e) {
-        // Ohne Message-Schicht laeuft die Uhr weiter, nur ohne Telefondaten.
-        trace(`Message-Neuaufbau fehlgeschlagen: ${e}\n`);
+
+    function report(force) {
+        if (heartbeatMinutes <= 0) return;
+        if (!native || "function" !== typeof native.watch_status_bits) return;
+        try {
+            const bits = native.watch_status_bits();
+            if (!(force || pending || minutesSince >= heartbeatMinutes || changed(bits)))
+                return;
+            const map = new Map([["wstatus", bits]]);
+            if (healthEnabled) {
+                try { addHealth(map); } catch (e) { trace(`Gesundheitswerte nicht lesbar: ${e}\n`); }
+            }
+            message.write(map);
+            lastBits = bits;
+            minutesSince = 0;
+            pending = false;
+            failures = 0;
+        } catch (e) {
+            pending = true;   // naechste Minute noch einmal versuchen
+            trace(`Statusmeldung fehlgeschlagen: ${e}\n`);
+            failures += 1;
+            // Nicht hier neu aufbauen (das laeuft tief in der Aufrufkette),
+            // sondern im naechsten Minutentakt.
+            if (failures >= FAILURES_BEFORE_RESET) resetRequested = true;
+        }
     }
-}
+
+    // pebble/message sperrt das Schreiben nach jedem write() bis zur
+    // Bestaetigung. Bleibt die aus (z. B. wenn das Senden sofort scheitert),
+    // wirft jedes weitere write() "not writable", und es wird nie wieder
+    // gemeldet, obwohl Telefon und Anzeige weiterlaufen. Ein Neuaufbau der
+    // Message-Schicht hebt die Sperre auf.
+    function resetMessage() {
+        failures = 0;
+        try {
+            trace("Message-Schicht wird neu aufgebaut\n");
+            message.close();
+        } catch (e) {
+            trace(`Message.close fehlgeschlagen: ${e}\n`);
+        }
+        try {
+            message = new Message(messageOptions);
+        } catch (e) {
+            // Ohne Message-Schicht laeuft die Uhr weiter, nur ohne Telefondaten.
+            trace(`Message-Neuaufbau fehlgeschlagen: ${e}\n`);
+        }
+    }
+
+    return {
+        // Vom Telefon: Heartbeat in Minuten (0 = aus) und Gesundheitsschalter.
+        // Liefert true, wenn sich etwas geaendert hat (dann sofort melden).
+        configure(heartbeat, health) {
+            let didChange = false;
+            if (undefined !== heartbeat && heartbeat !== heartbeatMinutes) {
+                heartbeatMinutes = heartbeat;
+                didChange = true;
+            }
+            if (undefined !== health && (0 !== health) !== healthEnabled) {
+                healthEnabled = 0 !== health;
+                didChange = true;
+            }
+            return didChange;
+        },
+        report,
+        // Jede Minute.
+        tick() {
+            if (resetRequested) {
+                resetRequested = false;
+                resetMessage();
+            }
+            minutesSince += 1;
+            report(false);
+        }
+    };
+})();
 
 // -------------------------------------------------------------------
 // Jede Minute neu zeichnen
 // -------------------------------------------------------------------
 watch.addEventListener("minutechange", () => {
-    if (resetRequested) {
-        resetRequested = false;
-        resetMessage();
-    }
     try { readWatchState(); } catch (e) { trace(`${e}\n`); }
-    minutesSinceStatus += 1;
-    reportStatus(false);
+    try { mqttStatus.tick(); } catch (e) { trace(`${e}\n`); }
     draw();
 });
 

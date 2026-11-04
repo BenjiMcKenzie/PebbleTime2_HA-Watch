@@ -1,7 +1,7 @@
 # App-Store-Eintrag – HA Watch Custom
 
 Pebble-Appstore (Rebble): Kategorie **Watchface**, Plattformen **Pebble Time 2 (emery)** und **Pebble Round 2 (gabbro)**.
-Version: 2.1.3 · Lizenz: MIT · Basiert auf HA Watch von Axel Kark · Autor der Custom-Version: Benji McKenzie
+Version: 2.1.4 · Lizenz: MIT · Basiert auf HA Watch von Axel Kark · Autor der Custom-Version: Benji McKenzie
 
 ## Dateien zum Hochladen
 | Feld | Datei |
@@ -65,8 +65,9 @@ HA Watch Custom zeigt die Uhrzeit zusammen mit den Daten, die dir wichtig sind �
 
 Basiert auf HA Watch von Axel Kark (MIT-Lizenz). Eigene UUID – lässt sich neben dem Original installieren.
 
-## Release Notes 2.1.3 (EN / DE)
-- Fixed: "JavaScript stack overflow" crash risk in the optional MQTT report (flatter call chain) / Behoben: Risiko eines „JavaScript stack overflow“-Absturzes bei der optionalen MQTT-Meldung (flachere Aufrufkette)
+## Release Notes 2.1.4 (EN / DE)
+- Fixed: "JavaScript stack overflow" crash on start introduced by the first MQTT fixes; the MQTT code is now one compact unit / Behoben: „JavaScript stack overflow“-Absturz beim Start, der durch die ersten MQTT-Korrekturen entstand; der MQTT-Code ist jetzt eine kompakte Einheit
+- Fixed: the optional MQTT report could stay silent for hours after a failed send; the watch rebuilds its message layer and failed reports are retried / Behoben: Die optionale MQTT-Meldung konnte nach einem fehlgeschlagenen Senden stundenlang schweigen; die Uhr baut ihre Message-Schicht neu auf, fehlgeschlagene Meldungen werden wiederholt
 
 ## Release Notes 2.1.2 (EN / DE)
 - Fixed: the optional MQTT report could stay silent for hours after a failed send; the watch now rebuilds its message layer, and failed reports are retried / Behoben: Die optionale MQTT-Meldung konnte nach einem fehlgeschlagenen Senden stundenlang schweigen; die Uhr baut ihre Message-Schicht jetzt neu auf, fehlgeschlagene Meldungen werden wiederholt

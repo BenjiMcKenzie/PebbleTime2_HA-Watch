@@ -11,7 +11,7 @@ var buildConfig = require(path.join(root, 'src/pkjs/config.js'));
 
 assert.strictEqual(packageInfo.name, 'ha-watch-custom');
 assert.strictEqual(packageInfo.author, 'Benji McKenzie');
-assert.strictEqual(packageInfo.version, '2.1.3');
+assert.strictEqual(packageInfo.version, '2.1.4');
 assert.strictEqual(packageInfo.license, 'MIT');
 assert.strictEqual(packageInfo.pebble.displayName, 'HA Watch Custom');
 // Die UUID darf sich nie aendern: Updates ersetzen sonst nicht die installierte App.
@@ -348,16 +348,25 @@ oldRetry.callback();
 assert.strictEqual(requests.length, afterNewer, 'a superseded retry must not send stale data');
 
 // --- Uhr: Selbstheilung der Message-Schicht ---------------------------------------
-assert(watchSource.indexOf('function resetMessage()') >= 0, 'watch self-heal missing');
-assert(watchSource.indexOf('resetMessage();') >= 0 && watchSource.indexOf('statusFailures >= STATUS_FAILURES_BEFORE_RESET') >= 0,
-       'watch must rebuild the message layer after repeated send failures');
-assert(watchSource.indexOf('let message = createMessage();') >= 0);
-// Der JS-Stack der Uhr hat nur 384 Eintraege: kein Neuaufbau mitten in der Aufrufkette,
-// und addHealth() ohne Closures.
+assert(watchSource.indexOf('let message = new Message(messageOptions);') >= 0,
+       'new Message must stay at the top level: one extra call frame overflows the 384-slot startup stack');
+assert.strictEqual(watchSource.indexOf('createMessage'), -1, 'no wrapper function around new Message');
+// Der JS-Stack der Uhr hat nur 384 Eintraege. Jede Deklaration auf oberster Ebene von
+// main.js belegt beim Laden einen Platz davon: mit 162 Deklarationen (2.1.1) startet die App,
+// mit 163 oder mehr stuerzt sie beim Start mit "JavaScript stack overflow" ab (im Emulator
+// nachgestellt). Neue Teile gehoeren in vorhandene Einheiten wie mqttStatus.
+var topLevelDeclarations = (watchSource.match(/^(?:function|let|const|class)\s/gm) || []).length;
+assert(topLevelDeclarations <= 158,
+       'main.js has ' + topLevelDeclarations + ' top-level declarations; more than ~160 overflow the startup stack');
+assert(watchSource.indexOf('const mqttStatus = (() => {') >= 0, 'MQTT code must stay inside the mqttStatus unit');
 assert(watchSource.indexOf('resetRequested = true;') >= 0 && watchSource.indexOf('if (resetRequested) {') >= 0,
        'message layer must be rebuilt from the minute tick, not from deep inside the call chain');
-var addHealthSource = watchSource.slice(watchSource.indexOf('function addHealth('),
-                                        watchSource.indexOf('\n}\n', watchSource.indexOf('function addHealth(')));
+assert(watchSource.indexOf('failures >= FAILURES_BEFORE_RESET') >= 0, 'watch must rebuild the message layer after repeated send failures');
+assert(watchSource.indexOf('let message = new Message(messageOptions);') >= 0,
+       'new Message must stay at the top level');
+assert.strictEqual(watchSource.indexOf('createMessage'), -1, 'no wrapper function around new Message');
+var addHealthStart = watchSource.indexOf('function addHealth(');
+var addHealthSource = watchSource.slice(addHealthStart, watchSource.indexOf('\n    }\n', addHealthStart));
 assert.strictEqual(/=>|function\s*\(/.test(addHealthSource), false, 'addHealth must not create closures');
 
 console.log('HA Watch Custom validation passed');
