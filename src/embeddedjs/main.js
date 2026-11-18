@@ -752,12 +752,13 @@ let effectCode     = EFFECT_NONE;
 let effectStrength = 2;
 
 // [Zielfarbe auf dunklem Hintergrund, Zielfarbe auf hellem Hintergrund]
-const EFFECT_TARGETS = {
-    [EFFECT_CLOUDS]: [0x555555, 0xAAAAAA],
-    [EFFECT_RAIN]:   [0x00AAFF, 0x0055FF],
-    [EFFECT_SNOW]:   [0xFFFFFF, 0x55AAFF],
-    [EFFECT_FOG]:    [0x555555, 0xAAAAAA]
-};
+const EFFECT_TARGETS = [
+    null,                    // EFFECT_NONE
+    [0x555555, 0xAAAAAA],    // EFFECT_CLOUDS
+    [0x00AAFF, 0x0055FF],    // EFFECT_RAIN
+    [0xFFFFFF, 0x55AAFF],    // EFFECT_SNOW
+    [0x555555, 0xAAAAAA]     // EFFECT_FOG
+];
 
 // Flaechen werden gerastert gezeichnet; 4x4-Bayer-Schwellen fuer die Dichte.
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
@@ -932,7 +933,8 @@ function drawScreen() {
 
     render.begin();
     render.fillRectangle(colorBackground, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
-    drawWeatherEffect(now.getHours() * 60 + now.getMinutes());
+    if (effectCode !== EFFECT_NONE)
+        drawWeatherEffect(now.getHours() * 60 + now.getMinutes());
 
     for (let index = 0; index < rows.length; index += 1) {
         const item = rows[index];
@@ -1108,10 +1110,10 @@ function handleMessage(received) {
             if (unit  !== undefined) slotUnit[slot - 1]  = unit;
         }
 
-        const receivedEffect = received.get("fxcode");
-        if (receivedEffect !== undefined) effectCode = receivedEffect;
-        const receivedEffectStrength = received.get("fxstrength");
-        if (receivedEffectStrength !== undefined) effectStrength = receivedEffectStrength;
+        // Ohne lokale Variablen: handleMessage hat schon sehr viele, und der JS-Stack
+        // der Uhr ist klein.
+        if (received.has("fxcode")) effectCode = received.get("fxcode");
+        if (received.has("fxstrength")) effectStrength = received.get("fxstrength");
 
         const condition   = received.get("weather");
         const temperature = received.get("temperature");
