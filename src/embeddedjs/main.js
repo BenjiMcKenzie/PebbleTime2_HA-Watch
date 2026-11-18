@@ -739,9 +739,9 @@ function chooseTimeFont(infoCount, hours, minutes) {
 // keinen Alphakanal. Die "Transparenz" entsteht deshalb so:
 //  - Wolken und Nebel (Flaechen): ein Punktraster aus einer Farbstufe Abstand
 //    zum Hintergrund; die Staerke ist die Dichte des Rasters (25 bis 100 %).
-//  - Regen und Schnee (duenne Striche und Punkte): die Staerke ist die Zahl der
-//    Palettenstufen, um die sich die Farbe vom Hintergrund abhebt (4 = volle
-//    Effektfarbe).
+//  - Regen und Schnee (duenne Striche und Punkte): die Staerke bestimmt Menge und
+//    Dicke der Tropfen und Flocken und zusaetzlich die Zahl der Palettenstufen,
+//    um die sich die Farbe vom Hintergrund abhebt (4 = volle Effektfarbe).
 // Alles in einem Objekt: Jeder Name auf Modulebene belegt Platz im JS-Stack,
 // und das erste draw() laeuft am Ende des Moduls mitten darin. 2.2.0 hatte
 // rund 18 Namen mehr und brach beim Start mit "stack overflow" ab.
@@ -843,27 +843,35 @@ function draw(minuteOfDay) {
     const random = effectRandom(state.code * 1000 + (state.code === EFFECT_RAIN ? minuteOfDay : 0));
     const area = SCREEN_WIDTH * SCREEN_HEIGHT;
 
+    // Die Staerke 1 bis 4 aendert bei Regen und Schnee Menge UND Dicke, nicht nur die
+    // Farbe: Die Palette hat so wenige Stufen, dass Farbe allein kaum sichtbar ist.
+    const level = Math.max(1, Math.min(4, state.strength));
+    const amount = [0.5, 1, 1.7, 2.6][level - 1];
+    const thick = level >= 3;
+
     if (state.code === EFFECT_RAIN) {
         // Schraege Striche; jede Minute ein neues Muster.
-        const count = Math.round(area / 1300);
+        const count = Math.round(area / 1300 * amount);
+        const width = thick ? 2 : 1;
         for (let i = 0; i < count; i += 1) {
             const x = random() * (SCREEN_WIDTH + 8);
             const y = random() * SCREEN_HEIGHT;
-            effectBlock(color, x,     y,     1, 3);
-            effectBlock(color, x - 1, y + 3, 1, 3);
-            effectBlock(color, x - 2, y + 6, 1, 3);
+            effectBlock(color, x,     y,     width, 4);
+            effectBlock(color, x - 1, y + 4, width, 4);
+            effectBlock(color, x - 2, y + 8, width, 4);
         }
     } else if (state.code === EFFECT_SNOW) {
         // Die Flocken sinken langsam: sieben Pixel je Minute.
-        const count = Math.round(area / 900);
+        const count = Math.round(area / 900 * amount);
+        const size = thick ? 3 : 2;
         for (let i = 0; i < count; i += 1) {
             const x = random() * SCREEN_WIDTH;
             const y = (random() * SCREEN_HEIGHT + minuteOfDay * 7) % SCREEN_HEIGHT;
             if (random() < 0.4) {
-                effectBlock(color, x - 1, y, 3, 1);
-                effectBlock(color, x, y - 1, 1, 3);
+                effectBlock(color, x - size, y, 2 * size + 1, 1);
+                effectBlock(color, x, y - size, 1, 2 * size + 1);
             } else
-                effectBlock(color, x, y, 2, 2);
+                effectBlock(color, x, y, size, size);
         }
     } else if (state.code === EFFECT_CLOUDS) {
         // Drei Wolken ziehen einen Pixel je Minute nach rechts.
