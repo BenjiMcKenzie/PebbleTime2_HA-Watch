@@ -50,7 +50,6 @@ const SCREEN_RADIUS = CENTER_X;
 // Farben
 // -------------------------------------------------------------------
 let colorBackground = render.makeColor(255, 255, 255);
-let backgroundRgb = 0xFFFFFF;   // dieselbe Farbe als Zahl, fuer die Wettereffekte
 let colorTime       = render.makeColor(  0,   0,   0);
 let colorInfo       = render.makeColor(  0,   0,   0);
 let colorAccent     = render.makeColor(120, 120, 120);
@@ -291,8 +290,8 @@ function restoreDisplaySettings() {
         dateFormat = native.watch_setting_read(SETTING_KEY_DATE_FORMAT, DATE_DAY_MONTH);
         language = native.watch_setting_read(SETTING_KEY_LANGUAGE, LANGUAGE_EN);
         visibility = native.watch_setting_read(SETTING_KEY_VISIBILITY, 0);
-        backgroundRgb = native.watch_setting_read(SETTING_KEY_BACKGROUND, 0xFFFFFF);
-        colorBackground = pebbleColor(backgroundRgb);
+        weatherFx.state.background = native.watch_setting_read(SETTING_KEY_BACKGROUND, 0xFFFFFF);
+        colorBackground = pebbleColor(weatherFx.state.background);
         colorTime = pebbleColor(native.watch_setting_read(SETTING_KEY_TIME_COLOR, 0x000000));
         colorInfo = pebbleColor(native.watch_setting_read(SETTING_KEY_INFO_COLOR, 0x000000));
         colorAccent = pebbleColor(native.watch_setting_read(SETTING_KEY_ACCENT_COLOR, 0x787878));
@@ -743,13 +742,16 @@ function chooseTimeFont(infoCount, hours, minutes) {
 //  - Regen und Schnee (duenne Striche und Punkte): die Staerke ist die Zahl der
 //    Palettenstufen, um die sich die Farbe vom Hintergrund abhebt (4 = volle
 //    Effektfarbe).
+// Alles in einem Objekt: Jeder Name auf Modulebene belegt Platz im JS-Stack,
+// und das erste draw() laeuft am Ende des Moduls mitten darin. 2.2.0 hatte
+// rund 18 Namen mehr und brach beim Start mit "stack overflow" ab.
+const weatherFx = (() => {
+const state = { code: 0, strength: 2, background: 0xFFFFFF };
 const EFFECT_NONE   = 0;
 const EFFECT_CLOUDS = 1;
 const EFFECT_RAIN   = 2;
 const EFFECT_SNOW   = 3;
 const EFFECT_FOG    = 4;
-let effectCode     = EFFECT_NONE;
-let effectStrength = 2;
 
 // [Zielfarbe auf dunklem Hintergrund, Zielfarbe auf hellem Hintergrund]
 const EFFECT_TARGETS = [
@@ -767,7 +769,7 @@ let effectDensity = 1;
 function effectRgb(target, steps) {
     let rgb = 0;
     for (let shift = 16; shift >= 0; shift -= 8) {
-        const from = Math.round(((backgroundRgb >> shift) & 255) / 85);
+        const from = Math.round(((state.background >> shift) & 255) / 85);
         const to   = Math.round(((target >> shift) & 255) / 85);
         let level = to;
         if (steps < 4)
@@ -778,15 +780,15 @@ function effectRgb(target, steps) {
 }
 
 function effectColor(kind) {
-    const red   = (backgroundRgb >> 16) & 255;
-    const green = (backgroundRgb >> 8) & 255;
-    const blue  = backgroundRgb & 255;
+    const red   = (state.background >> 16) & 255;
+    const green = (state.background >> 8) & 255;
+    const blue  = state.background & 255;
     const lightBackground = (red * 3 + green * 6 + blue) / 10 > 127;
     const targets = EFFECT_TARGETS[kind];
-    const steps = (kind === EFFECT_CLOUDS || kind === EFFECT_FOG) ? 1 : effectStrength;
+    const steps = (kind === EFFECT_CLOUDS || kind === EFFECT_FOG) ? 1 : state.strength;
     let rgb = effectRgb(targets[lightBackground ? 1 : 0], steps);
     // Gleicht die Zielfarbe dem Hintergrund, bliebe der Effekt unsichtbar.
-    if (rgb === effectRgb(backgroundRgb, 4))
+    if (rgb === effectRgb(state.background, 4))
         rgb = effectRgb(targets[lightBackground ? 0 : 1], steps);
     return pebbleColor(rgb);
 }
@@ -833,15 +835,15 @@ function drawCloud(color, centerX, centerY, r) {
     effectBlock(color, centerX - 1.9 * r, centerY + 0.2 * r, 4.4 * r, 0.8 * r);
 }
 
-function drawWeatherEffect(minuteOfDay) {
-    if (effectCode === EFFECT_NONE || !EFFECT_TARGETS[effectCode]) return;
-    const color = effectColor(effectCode);
-    effectDensity = (effectCode === EFFECT_CLOUDS || effectCode === EFFECT_FOG)
-                  ? Math.max(1, Math.min(4, effectStrength)) / 4 : 1;
-    const random = effectRandom(effectCode * 1000 + (effectCode === EFFECT_RAIN ? minuteOfDay : 0));
+function draw(minuteOfDay) {
+    if (state.code === EFFECT_NONE || !EFFECT_TARGETS[state.code]) return;
+    const color = effectColor(state.code);
+    effectDensity = (state.code === EFFECT_CLOUDS || state.code === EFFECT_FOG)
+                  ? Math.max(1, Math.min(4, state.strength)) / 4 : 1;
+    const random = effectRandom(state.code * 1000 + (state.code === EFFECT_RAIN ? minuteOfDay : 0));
     const area = SCREEN_WIDTH * SCREEN_HEIGHT;
 
-    if (effectCode === EFFECT_RAIN) {
+    if (state.code === EFFECT_RAIN) {
         // Schraege Striche; jede Minute ein neues Muster.
         const count = Math.round(area / 1300);
         for (let i = 0; i < count; i += 1) {
@@ -851,7 +853,7 @@ function drawWeatherEffect(minuteOfDay) {
             effectBlock(color, x - 1, y + 3, 1, 3);
             effectBlock(color, x - 2, y + 6, 1, 3);
         }
-    } else if (effectCode === EFFECT_SNOW) {
+    } else if (state.code === EFFECT_SNOW) {
         // Die Flocken sinken langsam: sieben Pixel je Minute.
         const count = Math.round(area / 900);
         for (let i = 0; i < count; i += 1) {
@@ -863,7 +865,7 @@ function drawWeatherEffect(minuteOfDay) {
             } else
                 effectBlock(color, x, y, 2, 2);
         }
-    } else if (effectCode === EFFECT_CLOUDS) {
+    } else if (state.code === EFFECT_CLOUDS) {
         // Drei Wolken ziehen einen Pixel je Minute nach rechts.
         const radius = Math.round(SCREEN_WIDTH / 11);
         const span = SCREEN_WIDTH + 8 * radius;
@@ -872,7 +874,7 @@ function drawWeatherEffect(minuteOfDay) {
             const y = (i + 0.3 + random() * 0.4) * SCREEN_HEIGHT / 3;
             drawCloud(color, x, y, radius);
         }
-    } else if (effectCode === EFFECT_FOG) {
+    } else if (state.code === EFFECT_FOG) {
         // Breite waagerechte Baender, langsam nach rechts treibend.
         const bands = 8;
         for (let i = 0; i < bands; i += 1) {
@@ -883,6 +885,8 @@ function drawWeatherEffect(minuteOfDay) {
         }
     }
 }
+return { state, draw };
+})();
 
 function drawScreen() {
     const now = new Date();
@@ -933,8 +937,8 @@ function drawScreen() {
 
     render.begin();
     render.fillRectangle(colorBackground, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
-    if (effectCode !== EFFECT_NONE)
-        drawWeatherEffect(now.getHours() * 60 + now.getMinutes());
+    if (weatherFx.state.code !== 0)
+        weatherFx.draw(now.getHours() * 60 + now.getMinutes());
 
     for (let index = 0; index < rows.length; index += 1) {
         const item = rows[index];
@@ -1086,7 +1090,7 @@ function handleMessage(received) {
         const info = received.get("infocolor");
         const accent = received.get("accentcolor");
         if (background !== undefined) {
-            backgroundRgb = background;
+            weatherFx.state.background = background;
             colorBackground = pebbleColor(background);
         }
         if (time !== undefined) colorTime = pebbleColor(time);
@@ -1112,8 +1116,8 @@ function handleMessage(received) {
 
         // Ohne lokale Variablen: handleMessage hat schon sehr viele, und der JS-Stack
         // der Uhr ist klein.
-        if (received.has("fxcode")) effectCode = received.get("fxcode");
-        if (received.has("fxstrength")) effectStrength = received.get("fxstrength");
+        if (received.has("fxcode")) weatherFx.state.code = received.get("fxcode");
+        if (received.has("fxstrength")) weatherFx.state.strength = received.get("fxstrength");
 
         const condition   = received.get("weather");
         const temperature = received.get("temperature");
@@ -1209,5 +1213,9 @@ watch.addEventListener("minutechange", () => {
     draw();
 });
 
-readWatchState();
-draw();
+// Nicht im Modulrumpf zeichnen: dort liegt der Stack aller Modul-Deklarationen
+// darunter, und die Zeichenkette ist die tiefste der ganzen Uhr.
+setTimeout(() => {
+    try { readWatchState(); } catch (e) { trace(`${e}\n`); }
+    draw();
+}, 0);

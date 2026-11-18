@@ -13,6 +13,11 @@ assert.strictEqual(packageInfo.name, 'ha-watch-custom');
 assert.strictEqual(packageInfo.author, 'Benji McKenzie');
 assert.strictEqual(packageInfo.version, '2.2.0');
 assert.strictEqual(packageInfo.license, 'MIT');
+// Das neue Pebble-Tool baut sonst mit manifestVersion 2 und ohne Berechtigungen:
+// Dann darf das Handy-JavaScript keine Netzwerkanfragen mehr stellen (kein Wetter,
+// keine HA-Werte, kein MQTT). Siehe README.
+assert.strictEqual(packageInfo.pebble.manifestVersion, 1,
+                   'manifestVersion 1 keeps network access for PebbleKit JS');
 assert.strictEqual(packageInfo.pebble.displayName, 'HA Watch Custom');
 // Die UUID darf sich nie aendern: Updates ersetzen sonst nicht die installierte App.
 assert.strictEqual(packageInfo.pebble.uuid, '9698ca1b-7be6-42c5-88b5-7358678dd4c2');
@@ -324,8 +329,8 @@ assert.strictEqual(context.effectCode(context.readSettings()), 3, 'test effect o
 fxStored.fxStrength = '9';
 storage['clay-settings'] = JSON.stringify(fxStored);
 assert.strictEqual(context.readSettings().fxStrength, 4, 'strength is limited to 1..4');
-assert(watchSource.indexOf('drawWeatherEffect(now') >= 0, 'weather effect is not drawn');
-assert(watchSource.indexOf('drawWeatherEffect(now') < watchSource.indexOf('drawConfigurableRow(item.row'),
+assert(watchSource.indexOf('weatherFx.draw(now') >= 0, 'weather effect is not drawn');
+assert(watchSource.indexOf('weatherFx.draw(now') < watchSource.indexOf('drawConfigurableRow(item.row'),
        'effect must be drawn before the text rows');
 
 console.log('HA Watch Custom validation passed');
