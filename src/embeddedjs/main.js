@@ -50,6 +50,7 @@ const SCREEN_RADIUS = CENTER_X;
 // Farben
 // -------------------------------------------------------------------
 let colorBackground = render.makeColor(255, 255, 255);
+let backgroundRgb = 0xFFFFFF;   // dieselbe Farbe als Zahl, fuer die Wettereffekte
 let colorTime       = render.makeColor(  0,   0,   0);
 let colorInfo       = render.makeColor(  0,   0,   0);
 let colorAccent     = render.makeColor(120, 120, 120);
@@ -290,7 +291,8 @@ function restoreDisplaySettings() {
         dateFormat = native.watch_setting_read(SETTING_KEY_DATE_FORMAT, DATE_DAY_MONTH);
         language = native.watch_setting_read(SETTING_KEY_LANGUAGE, LANGUAGE_EN);
         visibility = native.watch_setting_read(SETTING_KEY_VISIBILITY, 0);
-        colorBackground = pebbleColor(native.watch_setting_read(SETTING_KEY_BACKGROUND, 0xFFFFFF));
+        backgroundRgb = native.watch_setting_read(SETTING_KEY_BACKGROUND, 0xFFFFFF);
+        colorBackground = pebbleColor(backgroundRgb);
         colorTime = pebbleColor(native.watch_setting_read(SETTING_KEY_TIME_COLOR, 0x000000));
         colorInfo = pebbleColor(native.watch_setting_read(SETTING_KEY_INFO_COLOR, 0x000000));
         colorAccent = pebbleColor(native.watch_setting_read(SETTING_KEY_ACCENT_COLOR, 0x787878));
@@ -728,6 +730,159 @@ function chooseTimeFont(infoCount, hours, minutes) {
     }
 }
 
+// -------------------------------------------------------------------
+// Wetter-Hintergrund
+// -------------------------------------------------------------------
+// Das Telefon schickt nur einen Code (0 = kein Effekt) und eine Staerke von 1
+// bis 4. Gezeichnet wird ohne Bilder, nur mit Rechtecken, direkt nach dem
+// Hintergrund und noch vor dem Text; Zahlen und Linien liegen also immer
+// darueber. Der Bildschirm kennt nur vier Helligkeitsstufen je Farbkanal und
+// keinen Alphakanal. Die "Transparenz" entsteht deshalb so:
+//  - Wolken und Nebel (Flaechen): ein Punktraster aus einer Farbstufe Abstand
+//    zum Hintergrund; die Staerke ist die Dichte des Rasters (25 bis 100 %).
+//  - Regen und Schnee (duenne Striche und Punkte): die Staerke ist die Zahl der
+//    Palettenstufen, um die sich die Farbe vom Hintergrund abhebt (4 = volle
+//    Effektfarbe).
+const EFFECT_NONE   = 0;
+const EFFECT_CLOUDS = 1;
+const EFFECT_RAIN   = 2;
+const EFFECT_SNOW   = 3;
+const EFFECT_FOG    = 4;
+let effectCode     = EFFECT_NONE;
+let effectStrength = 2;
+
+// [Zielfarbe auf dunklem Hintergrund, Zielfarbe auf hellem Hintergrund]
+const EFFECT_TARGETS = {
+    [EFFECT_CLOUDS]: [0x555555, 0xAAAAAA],
+    [EFFECT_RAIN]:   [0x00AAFF, 0x0055FF],
+    [EFFECT_SNOW]:   [0xFFFFFF, 0x55AAFF],
+    [EFFECT_FOG]:    [0x555555, 0xAAAAAA]
+};
+
+// Flaechen werden gerastert gezeichnet; 4x4-Bayer-Schwellen fuer die Dichte.
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+let effectDensity = 1;
+
+function effectRgb(target, steps) {
+    let rgb = 0;
+    for (let shift = 16; shift >= 0; shift -= 8) {
+        const from = Math.round(((backgroundRgb >> shift) & 255) / 85);
+        const to   = Math.round(((target >> shift) & 255) / 85);
+        let level = to;
+        if (steps < 4)
+            level = from < to ? Math.min(to, from + steps) : Math.max(to, from - steps);
+        rgb |= (level * 85) << shift;
+    }
+    return rgb;
+}
+
+function effectColor(kind) {
+    const red   = (backgroundRgb >> 16) & 255;
+    const green = (backgroundRgb >> 8) & 255;
+    const blue  = backgroundRgb & 255;
+    const lightBackground = (red * 3 + green * 6 + blue) / 10 > 127;
+    const targets = EFFECT_TARGETS[kind];
+    const steps = (kind === EFFECT_CLOUDS || kind === EFFECT_FOG) ? 1 : effectStrength;
+    let rgb = effectRgb(targets[lightBackground ? 1 : 0], steps);
+    // Gleicht die Zielfarbe dem Hintergrund, bliebe der Effekt unsichtbar.
+    if (rgb === effectRgb(backgroundRgb, 4))
+        rgb = effectRgb(targets[lightBackground ? 0 : 1], steps);
+    return pebbleColor(rgb);
+}
+
+// Park-Miller: kleine Zufallsfolge, damit jede Zeichnung bei gleicher Minute
+// gleich aussieht (kein Flackern bei Zwischenzeichnungen).
+function effectRandom(seed) {
+    let state = (seed % 2147483646) + 1;
+    return () => {
+        state = (state * 16807) % 2147483647;
+        return (state - 1) / 2147483646;
+    };
+}
+
+function effectBlock(color, x, y, w, h) {
+    x = Math.round(x); y = Math.round(y);
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    if (x + w > SCREEN_WIDTH)  w = SCREEN_WIDTH - x;
+    if (y + h > SCREEN_HEIGHT) h = SCREEN_HEIGHT - y;
+    if (w <= 0 || h <= 0) return;
+    if (effectDensity >= 1) {
+        render.fillRectangle(color, x, y, w, h);
+        return;
+    }
+    const keep = Math.round(effectDensity * 16);
+    for (let j = y; j < y + h; j += 1)
+        for (let i = x; i < x + w; i += 1)
+            if (BAYER[(j & 3) * 4 + (i & 3)] < keep) render.fillRectangle(color, i, j, 1, 1);
+}
+
+function effectDisc(color, centerX, centerY, radius) {
+    for (let dy = -radius; dy <= radius; dy += 1) {
+        const dx = Math.floor(Math.sqrt(radius * radius - dy * dy));
+        effectBlock(color, centerX - dx, centerY + dy, 2 * dx + 1, 1);
+    }
+}
+
+function drawCloud(color, centerX, centerY, r) {
+    effectDisc(color, centerX - 1.2 * r, centerY + 0.2 * r, Math.round(0.8 * r));
+    effectDisc(color, centerX - 0.2 * r, centerY - 0.4 * r, r);
+    effectDisc(color, centerX + 1.0 * r, centerY, Math.round(0.9 * r));
+    effectDisc(color, centerX + 1.9 * r, centerY + 0.3 * r, Math.round(0.65 * r));
+    effectBlock(color, centerX - 1.9 * r, centerY + 0.2 * r, 4.4 * r, 0.8 * r);
+}
+
+function drawWeatherEffect(minuteOfDay) {
+    if (effectCode === EFFECT_NONE || !EFFECT_TARGETS[effectCode]) return;
+    const color = effectColor(effectCode);
+    effectDensity = (effectCode === EFFECT_CLOUDS || effectCode === EFFECT_FOG)
+                  ? Math.max(1, Math.min(4, effectStrength)) / 4 : 1;
+    const random = effectRandom(effectCode * 1000 + (effectCode === EFFECT_RAIN ? minuteOfDay : 0));
+    const area = SCREEN_WIDTH * SCREEN_HEIGHT;
+
+    if (effectCode === EFFECT_RAIN) {
+        // Schraege Striche; jede Minute ein neues Muster.
+        const count = Math.round(area / 1300);
+        for (let i = 0; i < count; i += 1) {
+            const x = random() * (SCREEN_WIDTH + 8);
+            const y = random() * SCREEN_HEIGHT;
+            effectBlock(color, x,     y,     1, 3);
+            effectBlock(color, x - 1, y + 3, 1, 3);
+            effectBlock(color, x - 2, y + 6, 1, 3);
+        }
+    } else if (effectCode === EFFECT_SNOW) {
+        // Die Flocken sinken langsam: sieben Pixel je Minute.
+        const count = Math.round(area / 900);
+        for (let i = 0; i < count; i += 1) {
+            const x = random() * SCREEN_WIDTH;
+            const y = (random() * SCREEN_HEIGHT + minuteOfDay * 7) % SCREEN_HEIGHT;
+            if (random() < 0.4) {
+                effectBlock(color, x - 1, y, 3, 1);
+                effectBlock(color, x, y - 1, 1, 3);
+            } else
+                effectBlock(color, x, y, 2, 2);
+        }
+    } else if (effectCode === EFFECT_CLOUDS) {
+        // Drei Wolken ziehen einen Pixel je Minute nach rechts.
+        const radius = Math.round(SCREEN_WIDTH / 11);
+        const span = SCREEN_WIDTH + 8 * radius;
+        for (let i = 0; i < 3; i += 1) {
+            const x = (random() * span + minuteOfDay) % span - 4 * radius;
+            const y = (i + 0.3 + random() * 0.4) * SCREEN_HEIGHT / 3;
+            drawCloud(color, x, y, radius);
+        }
+    } else if (effectCode === EFFECT_FOG) {
+        // Breite waagerechte Baender, langsam nach rechts treibend.
+        const bands = 8;
+        for (let i = 0; i < bands; i += 1) {
+            const width = SCREEN_WIDTH * (0.4 + random() * 0.5);
+            const span = SCREEN_WIDTH + width;
+            const x = (random() * span + minuteOfDay * 2) % span - width;
+            effectBlock(color, x, (i + 0.5) * SCREEN_HEIGHT / bands, width, 7);
+        }
+    }
+}
+
 function drawScreen() {
     const now = new Date();
 
@@ -777,6 +932,7 @@ function drawScreen() {
 
     render.begin();
     render.fillRectangle(colorBackground, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+    drawWeatherEffect(now.getHours() * 60 + now.getMinutes());
 
     for (let index = 0; index < rows.length; index += 1) {
         const item = rows[index];
@@ -862,7 +1018,8 @@ const MESSAGE_KEYS = ["dummy", "value1", "unit1", "value2", "unit2",
                        "fontstyle", "phonebattery",
                        "wstatus", "mqttheartbeat",
                        "mqtthealth", "wsteps", "wdist", "whr",
-                       "wsleep", "wactive", "wkcal", "wkcala"];
+                       "wsleep", "wactive", "wkcal", "wkcala",
+                       "fxcode", "fxstrength"];
 
 const message = new Message({
     input: 512,
@@ -926,7 +1083,10 @@ function handleMessage(received) {
         const time = received.get("timecolor");
         const info = received.get("infocolor");
         const accent = received.get("accentcolor");
-        if (background !== undefined) colorBackground = pebbleColor(background);
+        if (background !== undefined) {
+            backgroundRgb = background;
+            colorBackground = pebbleColor(background);
+        }
         if (time !== undefined) colorTime = pebbleColor(time);
         if (info !== undefined) colorInfo = pebbleColor(info);
         if (accent !== undefined) colorAccent = pebbleColor(accent);
@@ -947,6 +1107,11 @@ function handleMessage(received) {
             if (value !== undefined) slotValue[slot - 1] = value;
             if (unit  !== undefined) slotUnit[slot - 1]  = unit;
         }
+
+        const receivedEffect = received.get("fxcode");
+        if (receivedEffect !== undefined) effectCode = receivedEffect;
+        const receivedEffectStrength = received.get("fxstrength");
+        if (receivedEffectStrength !== undefined) effectStrength = receivedEffectStrength;
 
         const condition   = received.get("weather");
         const temperature = received.get("temperature");

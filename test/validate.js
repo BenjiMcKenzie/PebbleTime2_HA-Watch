@@ -11,7 +11,7 @@ var buildConfig = require(path.join(root, 'src/pkjs/config.js'));
 
 assert.strictEqual(packageInfo.name, 'ha-watch-custom');
 assert.strictEqual(packageInfo.author, 'Benji McKenzie');
-assert.strictEqual(packageInfo.version, '2.1.0');
+assert.strictEqual(packageInfo.version, '2.2.0');
 assert.strictEqual(packageInfo.license, 'MIT');
 assert.strictEqual(packageInfo.pebble.displayName, 'HA Watch Custom');
 // Die UUID darf sich nie aendern: Updates ersetzen sonst nicht die installierte App.
@@ -184,8 +184,8 @@ assert.strictEqual(context.cache.tempunit, '°F');
 ['mqttEnabled', 'mqttName', 'mqttPrefix'].forEach(function(key) {
   assert(englishKeys.indexOf(key) >= 0, 'mqtt setting missing: ' + key);
 });
-assert.strictEqual(packageInfo.pebble.messageKeys.slice(-10).join(),
-                   'wstatus,mqttheartbeat,mqtthealth,wsteps,wdist,whr,wsleep,wactive,wkcal,wkcala',
+assert.strictEqual(packageInfo.pebble.messageKeys.slice(-12).join(),
+                   'wstatus,mqttheartbeat,mqtthealth,wsteps,wdist,whr,wsleep,wactive,wkcal,wkcala,fxcode,fxstrength',
                    'new keys must be appended at the end');
 assert(manifest.ffi.functions.watch_health_metric, 'health FFI function missing');
 assert.strictEqual(context.readSettings().mqttHealth, false, 'health reporting must be off by default');
@@ -293,5 +293,39 @@ var removal = list.map(function(r) { return JSON.parse(r.body); }).filter(functi
 })[0];
 assert.strictEqual(removal.payload, '', 'sensor config must be cleared');
 assert.strictEqual(stateOf(list).steps, undefined, 'no health values without the switch');
+
+// Wetter-Hintergrund
+[[0, 0], [1, 0], [2, 1], [3, 1], [45, 2 + 2], [51, 2], [61, 2], [67, 2], [71, 3], [77, 3],
+ [80, 2], [85, 3], [95, 2], [99, 2]].forEach(function(pair) {
+  assert.strictEqual(context.weatherClassFromWmo(pair[0]), pair[0] === 45 ? 4 : pair[1], 'WMO ' + pair[0]);
+});
+assert.strictEqual(context.weatherClassFromHa('sunny'), 0);
+assert.strictEqual(context.weatherClassFromHa('partlycloudy'), 1);
+assert.strictEqual(context.weatherClassFromHa('pouring'), 2);
+assert.strictEqual(context.weatherClassFromHa('lightning-rainy'), 2);
+assert.strictEqual(context.weatherClassFromHa('snowy-rainy'), 3);
+assert.strictEqual(context.weatherClassFromHa('fog'), 4);
+assert.strictEqual(context.readSettings().fxEnabled, false, 'weather background must be off by default');
+['fxEnabled', 'fxStrength', 'fxClouds', 'fxRain', 'fxSnow', 'fxFog', 'fxTest'].forEach(function(key) {
+  assert(englishKeys.indexOf(key) >= 0, 'effect setting missing: ' + key);
+});
+var fxStored = JSON.parse(storage['clay-settings']);
+context.cache.weatherclass = 2;
+assert.strictEqual(context.effectCode(context.readSettings()), 0, 'off by default');
+fxStored.fxEnabled = true;
+storage['clay-settings'] = JSON.stringify(fxStored);
+assert.strictEqual(context.effectCode(context.readSettings()), 2, 'rain weather shows rain');
+fxStored.fxRain = false;
+storage['clay-settings'] = JSON.stringify(fxStored);
+assert.strictEqual(context.effectCode(context.readSettings()), 0, 'a disabled effect shows nothing');
+fxStored.fxTest = 'snow';
+storage['clay-settings'] = JSON.stringify(fxStored);
+assert.strictEqual(context.effectCode(context.readSettings()), 3, 'test effect overrides the weather');
+fxStored.fxStrength = '9';
+storage['clay-settings'] = JSON.stringify(fxStored);
+assert.strictEqual(context.readSettings().fxStrength, 4, 'strength is limited to 1..4');
+assert(watchSource.indexOf('drawWeatherEffect(now') >= 0, 'weather effect is not drawn');
+assert(watchSource.indexOf('drawWeatherEffect(now') < watchSource.indexOf('drawConfigurableRow(item.row'),
+       'effect must be drawn before the text rows');
 
 console.log('HA Watch Custom validation passed');

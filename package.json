@@ -66,7 +66,9 @@
             "wsleep",
             "wactive",
             "wkcal",
-            "wkcala"
+            "wkcala",
+            "fxcode",
+            "fxstrength"
         ],
         "projectType": "moddable",
         "resources": {
@@ -101,5 +103,5 @@
             "watchface": true
         }
     },
-    "version": "2.1.0"
+    "version": "2.2.0"
 }

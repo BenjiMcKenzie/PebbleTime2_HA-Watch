@@ -27,6 +27,10 @@ name and UUID, so HA Watch Custom can be installed alongside the original.
 - Configurable background, time, information and accent colors from the Pebble
   color palette
 - Original Roboto Bold time font or Roboto Regular
+- Optional weather background (off by default): clouds, rain, snow or fog are drawn
+  behind the time and values, with adjustable strength and a preview selector.
+  The screen has no real transparency, so clouds and fog use a dotted pattern
+  (strength = density) and rain and snow use a color closer to or further from the background
 - Watch, forced 24-hour or forced 12-hour time format
 
 The original white/black/gray appearance, all information lines, Open-Meteo,

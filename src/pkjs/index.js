@@ -68,6 +68,8 @@ var ROW_MODE_BITS = 2;
 var CACHE_DEFAULTS = {
     latitude: null, longitude: null,
     weather: '', temperature: '', tempunit: '',
+    // Wetterlage fuer den Hintergrundeffekt (siehe WEATHER_CLASS), nicht der Text.
+    weatherclass: 0,
     rowmode: 0,
     // 0 heisst "wie die Uhr eingestellt ist", 24 und 12 erzwingen das Format.
     timeformat: 0,
@@ -179,7 +181,15 @@ function readSettings() {
         mqttPrefix: (text('mqttPrefix') || 'pebble').replace(/^\/+|\/+$/g, ''),
         mqttHealth: enabled('mqttHealth', false),
         haRefreshMinutes: minutes('haRefreshMinutes', DEFAULT_HA_REFRESH_MINUTES),
-        weatherRefreshMinutes: minutes('weatherRefreshMinutes', DEFAULT_WEATHER_REFRESH_MINUTES)
+        weatherRefreshMinutes: minutes('weatherRefreshMinutes', DEFAULT_WEATHER_REFRESH_MINUTES),
+        // Wetter-Hintergrund: aus, bis der Schalter gesetzt wird.
+        fxEnabled: enabled('fxEnabled', false),
+        fxStrength: Math.max(1, Math.min(4, parseInt(text('fxStrength'), 10) || 2)),
+        fxClouds: enabled('fxClouds', true),
+        fxRain: enabled('fxRain', true),
+        fxSnow: enabled('fxSnow', true),
+        fxFog: enabled('fxFog', true),
+        fxTest: text('fxTest') || 'auto'
     };
 
     // Die Uhr meldet im Takt des HA-Aktualisierungsintervalls, hoechstens alle
@@ -455,6 +465,40 @@ function refresh() {
 // ein -- dann wird hier gar nichts abgefragt.
 var WEATHER_URL = 'https://api.open-meteo.com/v1/forecast';
 
+// Wetterlage fuer den Hintergrundeffekt. Muss zu EFFECT_* in
+// src/embeddedjs/main.js passen.
+var WEATHER_CLASS = { none: 0, clouds: 1, rain: 2, snow: 3, fog: 4 };
+var EFFECT_TEST = { clouds: 1, rain: 2, snow: 3, fog: 4 };
+
+function weatherClassFromWmo(code) {
+    code = Number(code);
+    if (code === 2 || code === 3) return WEATHER_CLASS.clouds;
+    if (code === 45 || code === 48) return WEATHER_CLASS.fog;
+    if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82) || (code >= 95 && code <= 99))
+        return WEATHER_CLASS.rain;
+    if ((code >= 71 && code <= 77) || code === 85 || code === 86) return WEATHER_CLASS.snow;
+    return WEATHER_CLASS.none;
+}
+
+function weatherClassFromHa(state) {
+    switch (state) {
+        case 'cloudy': case 'partlycloudy': return WEATHER_CLASS.clouds;
+        case 'fog': return WEATHER_CLASS.fog;
+        case 'rainy': case 'pouring': case 'lightning': case 'lightning-rainy': case 'hail':
+            return WEATHER_CLASS.rain;
+        case 'snowy': case 'snowy-rainy': return WEATHER_CLASS.snow;
+        default: return WEATHER_CLASS.none;
+    }
+}
+
+// 0 heisst: kein Effekt (aus, Wetterlage ohne Effekt oder Effekt abgeschaltet).
+function effectCode(settings) {
+    if (!settings.fxEnabled) return 0;
+    var code = EFFECT_TEST[settings.fxTest] || cache.weatherclass || 0;
+    var allowed = { 1: settings.fxClouds, 2: settings.fxRain, 3: settings.fxSnow, 4: settings.fxFog };
+    return allowed[code] ? code : 0;
+}
+
 // WMO-Wettercodes auf kurze Bezeichnungen, die auch neben der Temperatur noch
 // auf das Display passen.
 var WEATHER_TEXT = {
@@ -528,9 +572,11 @@ function finishWeatherRequest() {
 }
 
 function maybeRefreshWeather(settings, counts) {
-    // Nur abfragen, wenn die Wettervorgabe ueberhaupt sichtbar ist.
-    if (counts[WEATHER_ROW] > 0) return;
-    if (!settings.showWeather) return;
+    // Nur abfragen, wenn die Wettervorgabe sichtbar ist oder der Hintergrundeffekt
+    // das Wetter braucht (ein Test-Effekt braucht es nicht).
+    var rowShowsWeather = counts[WEATHER_ROW] === 0 && settings.showWeather;
+    var effectNeedsWeather = settings.fxEnabled && !EFFECT_TEST[settings.fxTest];
+    if (!rowShowsWeather && !effectNeedsWeather) return;
     var lastWeatherActivity = Math.max(weatherFetchedAt, weatherAttemptedAt);
     if (Date.now() - lastWeatherActivity < intervalMilliseconds(settings.weatherRefreshMinutes)) return;
     if (weatherRequestInProgress) {
@@ -574,6 +620,7 @@ function refreshOpenMeteoWeather(settings) {
             }
 
             cache.weather     = WEATHER_TEXT[selectedLanguage(settings)][current.weather_code] || '';
+            cache.weatherclass = weatherClassFromWmo(current.weather_code);
             cache.temperature = String(Math.round(current.temperature_2m));
             cache.tempunit    = '\u00B0' + unit;
             weatherFetchedAt  = Date.now();
@@ -603,6 +650,7 @@ function convertTemperature(value, fromUnit, toUnit) {
 }
 
 function clearWeather() {
+    cache.weatherclass = 0;
     cache.weather = '';
     cache.temperature = '';
     cache.tempunit = '';
@@ -644,6 +692,7 @@ function refreshHaWeather(settings) {
                 var requestedUnit = temperatureUnit(settings);
                 temperature = convertTemperature(temperature, sourceUnit, requestedUnit);
                 cache.weather = HA_WEATHER_TEXT[selectedLanguage(settings)][state] || state.replace(/-/g, ' ');
+                cache.weatherclass = weatherClassFromHa(state);
                 cache.temperature = String(Math.round(temperature));
                 cache.tempunit = requestedUnit ? '\u00B0' + requestedUnit : '';
                 weatherFetchedAt = Date.now();
@@ -673,7 +722,8 @@ function needsLocation(settings) {
     var middleUsesOpenMeteo = settings.showWeather
                            && (!connected || (!settings.entity1 && !settings.entity2))
                            && settings.weatherSource !== 'ha';
-    return topUsesSun || middleUsesOpenMeteo;
+    var effectUsesOpenMeteo = settings.fxEnabled && settings.weatherSource !== 'ha';
+    return topUsesSun || middleUsesOpenMeteo || effectUsesOpenMeteo;
 }
 
 function refreshLocation() {
@@ -748,11 +798,21 @@ function mqttHealthFlag() {
     try { return mqtt.healthEnabled(readSettings()) ? 1 : 0; } catch (e) { return 0; }
 }
 
+function readEffectSettings() {
+    try {
+        var settings = readSettings();
+        return { code: effectCode(settings), strength: settings.fxStrength };
+    } catch (e) {
+        return { code: 0, strength: 2 };
+    }
+}
+
 function publish(retriesLeft) {
     withPhoneBattery(function() { sendNow(retriesLeft); });
 }
 
 function sendNow(retriesLeft) {
+    var effectSettings = readEffectSettings();
     var dictionary = {
         phonebattery: cache.phonebattery,
         error:       currentError,
@@ -771,7 +831,9 @@ function sendNow(retriesLeft) {
         fontstyle: cache.fontstyle,
         // 0 schaltet die Statusmeldung auf der Uhr ab.
         mqttheartbeat: mqttHeartbeat(),
-        mqtthealth: mqttHealthFlag()
+        mqtthealth: mqttHealthFlag(),
+        fxcode: effectSettings.code,
+        fxstrength: effectSettings.strength
     };
 
     ALL_SLOTS.forEach(function(suffix) {
