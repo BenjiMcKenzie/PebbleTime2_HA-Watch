@@ -79,6 +79,7 @@ var storage = {
 var requests = [];
 var intervals = [];
 var clearedIntervals = [];
+var sentMessages = [];
 
 function FakeRequest() {
   requests.push(this);
@@ -114,7 +115,7 @@ var context = {
   },
   Pebble: {
     addEventListener: function() {},
-    sendAppMessage: function(data, success) { if (success) success(); },
+    sendAppMessage: function(data, success) { sentMessages.push(data); if (success) success(); },
     getAccountToken: function() { return ''; },
     getWatchToken: function() { return ''; }
   },
@@ -332,5 +333,28 @@ assert.strictEqual(context.readSettings().fxStrength, 4, 'strength is limited to
 assert(watchSource.indexOf('weatherFx.draw(now') >= 0, 'weather effect is not drawn');
 assert(watchSource.indexOf('weatherFx.draw(now') < watchSource.indexOf('drawConfigurableRow(item.row'),
        'effect must be drawn before the text rows');
+
+// Von Anfang bis Ende: Regen aus Home Assistant erreicht die Uhr als Effekt-Code.
+var e2e = JSON.parse(storage['clay-settings']);
+e2e.fxEnabled = true; e2e.fxTest = 'auto'; e2e.fxRain = true; e2e.fxStrength = '3';
+e2e.tempUnit = 'celsius'; e2e.weatherSource = 'ha'; e2e.weatherEntity = 'weather.home'; e2e.showWeather = true;
+storage['clay-settings'] = JSON.stringify(e2e);
+context.cache.weatherclass = 0;
+sentMessages.length = 0;
+context.refreshHaWeather(context.readSettings());
+var rainRequest = requests[requests.length - 1];
+rainRequest.status = 200;
+rainRequest.responseText = JSON.stringify({ state: 'rainy', attributes: { temperature: 7.6, temperature_unit: '\u00b0C' } });
+rainRequest.onload();
+assert(sentMessages.length > 0, 'no message was sent to the watch');
+var lastMessage = sentMessages[sentMessages.length - 1];
+assert.strictEqual(lastMessage.fxcode, 2, 'rain must be sent as effect code 2');
+assert.strictEqual(lastMessage.fxstrength, 3);
+assert.strictEqual(lastMessage.temperature, '8');
+e2e.fxEnabled = false;
+storage['clay-settings'] = JSON.stringify(e2e);
+sentMessages.length = 0;
+context.publish(0);
+assert.strictEqual(sentMessages[sentMessages.length - 1].fxcode, 0, 'switched off: no effect code');
 
 console.log('HA Watch Custom validation passed');
