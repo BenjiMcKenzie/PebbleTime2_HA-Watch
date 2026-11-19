@@ -357,4 +357,7 @@ sentMessages.length = 0;
 context.publish(0);
 assert.strictEqual(sentMessages[sentMessages.length - 1].fxcode, 0, 'switched off: no effect code');
 
+assert(watchSource.indexOf('const weatherFx = ') < watchSource.indexOf('configurationReady = restoreDisplaySettings();'),
+       'weatherFx must be defined before restoreDisplaySettings() runs (temporal dead zone)');
+
 console.log('HA Watch Custom validation passed');
